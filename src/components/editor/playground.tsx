@@ -356,8 +356,33 @@ export function Playground({ componentId }: PlaygroundProps) {
         if (!imp) continue;
         if (imp.startsWith("./") || imp.startsWith("../")) continue;
         if (imp === "react" || imp === "react-dom") continue;
-        // next/* imports usually exist in Next apps already; still show if user wants
-        pkgs.add(imp);
+        
+        // Handle subpath imports (e.g., "gsap/ScrollTrigger" -> "gsap", "next/image" -> "next")
+        let packageName = imp;
+        if (imp.includes("/")) {
+          // Extract base package name (everything before first slash)
+          const basePackage = imp.split("/")[0];
+          // Skip if it's a scoped package with subpath (e.g., "@scope/package/subpath")
+          if (basePackage.startsWith("@")) {
+            // For scoped packages, check if it's a valid subpath
+            const parts = imp.split("/");
+            if (parts.length > 2) {
+              // @scope/package/subpath -> @scope/package
+              packageName = parts.slice(0, 2).join("/");
+            } else {
+              // @scope/package -> keep as is
+              packageName = basePackage;
+            }
+          } else {
+            // Regular package with subpath (e.g., "gsap/ScrollTrigger" -> "gsap")
+            packageName = basePackage;
+          }
+        }
+        
+        // Skip Next.js subpath imports (next/image, next/link, etc.) - Next.js is usually already installed
+        if (packageName === "next") continue;
+        
+        pkgs.add(packageName);
       }
     }
     return Array.from(pkgs).sort();
@@ -594,10 +619,28 @@ export function Playground({ componentId }: PlaygroundProps) {
             shouldUpdate = true;
           }
         } else if (fileDetected === "css") {
-          // FIX: Handle CSS detection
-          if (f.language !== "css" || currentExt !== "css" || isDefaultFilename) {
+          // Check if any React/TSX file imports this CSS file as a module
+          let suggestedCssFilename = null;
+          for (const otherFile of prev) {
+            if (otherFile.language === "tsx" || otherFile.language === "jsx") {
+              // Look for CSS module imports like: import styles from './page.module.css'
+              const cssModuleImportMatch = otherFile.code.match(/import\s+\w+\s+from\s+['"]\.\/([^'"]+\.(?:module\.)?css)['"]/);
+              if (cssModuleImportMatch) {
+                const importedCssName = cssModuleImportMatch[1];
+                // If this CSS file matches the import (or is the only CSS file), use the imported name
+                if (f.filename === importedCssName || (prev.filter(f => f.language === "css").length === 1 && !f.filename.match(/\.(module\.)?css$/))) {
+                  suggestedCssFilename = importedCssName;
+                  break;
+                }
+              }
+            }
+          }
+          
+          if (f.language !== "css" || currentExt !== "css" || isDefaultFilename || suggestedCssFilename) {
             newLanguage = "css";
-            if (isDefaultFilename || currentExt !== "css") {
+            if (suggestedCssFilename) {
+              newFilename = suggestedCssFilename;
+            } else if (isDefaultFilename || currentExt !== "css") {
               newFilename = "styles.css";
             }
             shouldUpdate = true;
@@ -1328,15 +1371,15 @@ export function Playground({ componentId }: PlaygroundProps) {
         >
           {/* Install Command - Always visible at top when present */}
           {installCommand && (
-            <div className="border-b border-zinc-800 bg-zinc-950 px-3 py-2">
+            <div className="border-b border-border bg-muted/50 px-3 py-2">
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-[10px] uppercase tracking-wider text-zinc-500">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
                   Install Dependencies
                 </span>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-5 w-5 text-zinc-500 hover:text-zinc-300"
+                  className="h-5 w-5 text-muted-foreground hover:text-foreground"
                   onClick={handleCopyDeps}
                   title="Copy install command"
                 >
@@ -1347,8 +1390,8 @@ export function Playground({ componentId }: PlaygroundProps) {
                   )}
                 </Button>
               </div>
-              <code className="block font-mono text-xs text-emerald-400 bg-zinc-900 rounded px-2 py-1.5 overflow-x-auto">
-                <span className="text-zinc-600 select-none">$ </span>
+              <code className="block font-mono text-xs text-emerald-400 dark:text-emerald-300 bg-muted rounded px-2 py-1.5 overflow-x-auto">
+                <span className="text-muted-foreground select-none">$ </span>
                 {installCommand}
               </code>
             </div>
@@ -1369,9 +1412,9 @@ export function Playground({ componentId }: PlaygroundProps) {
           </div>
 
           {/* Terminal/Console Panel */}
-          <div className="border-t border-zinc-800 bg-zinc-950">
+          <div className="border-t border-border bg-muted/50">
             {/* Tab Header */}
-            <div className="flex items-center justify-between border-b border-zinc-800">
+            <div className="flex items-center justify-between border-b border-border">
               <div className="flex items-center">
                 {/* Terminal Tab */}
                 <button
@@ -1379,8 +1422,8 @@ export function Playground({ componentId }: PlaygroundProps) {
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-px",
                     terminalTab === "terminal" && isTerminalOpen
-                      ? "text-zinc-200 border-zinc-200"
-                      : "text-zinc-500 border-transparent hover:text-zinc-300"
+                      ? "text-foreground border-foreground"
+                      : "text-muted-foreground border-transparent hover:text-foreground"
                   )}
                 >
                   <Terminal className="h-3.5 w-3.5" />
@@ -1393,14 +1436,14 @@ export function Playground({ componentId }: PlaygroundProps) {
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-px",
                     terminalTab === "console" && isTerminalOpen
-                      ? "text-zinc-200 border-zinc-200"
-                      : "text-zinc-500 border-transparent hover:text-zinc-300"
+                      ? "text-foreground border-foreground"
+                      : "text-muted-foreground border-transparent hover:text-foreground"
                   )}
                 >
                   <FileText className="h-3.5 w-3.5" />
                   <span>Console</span>
                   {consoleLogs.length > 0 && (
-                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-zinc-800 text-zinc-300">
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                       {consoleLogs.length}
                     </Badge>
                   )}
@@ -1410,7 +1453,7 @@ export function Playground({ componentId }: PlaygroundProps) {
               {/* Collapse/Expand */}
               <button
                 onClick={() => setIsTerminalOpen(!isTerminalOpen)}
-                className="px-3 py-2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                className="px-3 py-2 text-muted-foreground hover:text-foreground transition-colors"
               >
                 {isTerminalOpen ? (
                   <ChevronDown className="h-3.5 w-3.5" />
@@ -1429,10 +1472,10 @@ export function Playground({ componentId }: PlaygroundProps) {
                     {/* Terminal Output */}
                     <div
                       ref={terminalOutputRef}
-                      className="flex-1 min-h-[100px] max-h-[180px] overflow-y-auto px-3 py-2 font-mono text-xs bg-zinc-950 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-zinc-900"
+                      className="flex-1 min-h-[100px] max-h-[180px] overflow-y-auto px-3 py-2 font-mono text-xs bg-muted/30 scrollbar-thin scrollbar-thumb-muted-foreground/30 scrollbar-track-muted/50"
                     >
                       {terminalOutput.length === 0 && !isWebContainerBooting && (
-                        <div className="text-zinc-500 italic">
+                        <div className="text-muted-foreground italic">
                           {webContainerError ? (
                             <div className="flex items-center gap-2 text-red-400">
                               <AlertCircle className="h-3.5 w-3.5" />
@@ -1457,7 +1500,7 @@ export function Playground({ componentId }: PlaygroundProps) {
                           className={cn(
                             "whitespace-pre-wrap break-words leading-relaxed py-0.5",
                             line.type === "command" && "text-cyan-300 font-semibold",
-                            line.type === "stdout" && "text-zinc-200",
+                            line.type === "stdout" && "text-foreground",
                             line.type === "stderr" && "text-red-300 bg-red-950/20 px-1 rounded",
                             line.type === "info" && "text-amber-300"
                           )}
@@ -1466,16 +1509,16 @@ export function Playground({ componentId }: PlaygroundProps) {
                         </div>
                       ))}
                       {isRunningCommand && (
-                        <div className="flex items-center gap-2 text-zinc-400">
-                          <div className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-pulse" />
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-pulse" />
                           <span className="italic">Running command...</span>
                         </div>
                       )}
                     </div>
 
                     {/* Command Input */}
-                    <div className="border-t border-zinc-800 px-3 py-2 bg-zinc-950">
-                      <div className="flex items-center gap-2 bg-zinc-900 rounded px-2 py-1.5 border border-zinc-800 focus-within:border-zinc-700 transition-colors">
+                    <div className="border-t border-border px-3 py-2 bg-muted/50">
+                      <div className="flex items-center gap-2 bg-muted rounded px-2 py-1.5 border border-border focus-within:border-ring transition-colors">
                         <span className="text-emerald-400 font-mono text-xs select-none font-semibold">$</span>
                         <input
                           type="text"
@@ -1503,7 +1546,7 @@ export function Playground({ componentId }: PlaygroundProps) {
                                 : "Type command and press Enter..."
                           }
                           disabled={isRunningCommand || !isWebContainerReady}
-                          className="flex-1 bg-transparent border-0 outline-none font-mono text-xs text-zinc-100 placeholder:text-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="flex-1 bg-transparent border-0 outline-none font-mono text-xs text-foreground placeholder:text-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                         {isWebContainerReady && (
                           <div className="flex items-center gap-1">
@@ -1511,7 +1554,7 @@ export function Playground({ componentId }: PlaygroundProps) {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-5 w-5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                                className="h-5 w-5 text-muted-foreground hover:text-foreground hover:bg-muted"
                                 onClick={() => setTerminalOutput([])}
                                 title="Clear terminal"
                               >
@@ -1541,7 +1584,7 @@ export function Playground({ componentId }: PlaygroundProps) {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-6 px-2 text-[10px] text-zinc-500 hover:text-zinc-300"
+                            className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground"
                             onClick={() => setConsoleLogs([])}
                           >
                             <X className="h-3 w-3 mr-1" />
@@ -1557,20 +1600,20 @@ export function Playground({ componentId }: PlaygroundProps) {
                                 log.type === "error" && "bg-red-950/50 text-red-400",
                                 log.type === "warn" && "bg-yellow-950/50 text-yellow-400",
                                 log.type === "info" && "bg-blue-950/50 text-blue-400",
-                                log.type === "log" && "bg-zinc-900 text-zinc-300"
+                                log.type === "log" && "bg-muted text-foreground"
                               )}
                             >
                               {log.type === "error" && <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />}
                               {log.type === "warn" && <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />}
                               {log.type === "info" && <Info className="h-3 w-3 mt-0.5 shrink-0" />}
-                              {log.type === "log" && <span className="text-zinc-500 shrink-0">&gt;</span>}
+                              {log.type === "log" && <span className="text-muted-foreground shrink-0">&gt;</span>}
                               <span className="break-all">{log.message}</span>
                             </div>
                           ))}
                         </div>
                       </>
                     ) : (
-                      <div className="text-center py-4 text-zinc-600 text-xs">
+                      <div className="text-center py-4 text-muted-foreground text-xs">
                         No console output yet. Use console.log() in your code.
                       </div>
                     )}

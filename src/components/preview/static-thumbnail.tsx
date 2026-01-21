@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useEffect, useState } from "react";
+import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import type { Framework } from "@/lib/detect-framework";
 import { generatePreviewRuntime } from "@/lib/preview-runtime-generator";
@@ -477,15 +477,39 @@ export function StaticThumbnail({
 }: StaticThumbnailProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isFrameLoaded, setIsFrameLoaded] = useState(false);
 
   const srcDoc = useMemo(
     () => generateHtmlDocument(files, framework),
     [files, framework]
   );
 
+  const postHtmlToFrame = useCallback((html: string) => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: "setPreviewHtml", html }, window.location.origin);
+  }, []);
+
   useEffect(() => {
     setIsLoaded(false);
-  }, [srcDoc]);
+    if (isFrameLoaded) {
+      postHtmlToFrame(srcDoc);
+    }
+  }, [srcDoc, isFrameLoaded, postHtmlToFrame]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      const data = event.data as any;
+      if (!data || typeof data !== "object") return;
+      if (data.type === "preview:loaded") {
+        setIsLoaded(true);
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   return (
     <div
@@ -501,10 +525,13 @@ export function StaticThumbnail({
       )}
       <iframe
         ref={iframeRef}
-        srcDoc={srcDoc}
+        src="/preview/frame"
         sandbox="allow-scripts allow-same-origin"
         loading="lazy"
-        onLoad={() => setIsLoaded(true)}
+        onLoad={() => {
+          setIsFrameLoaded(true);
+          postHtmlToFrame(srcDoc);
+        }}
         className={cn(
           "w-full h-full border-0 pointer-events-none transition-opacity duration-300",
           isLoaded ? "opacity-100" : "opacity-0"

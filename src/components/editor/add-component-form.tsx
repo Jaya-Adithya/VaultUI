@@ -248,11 +248,30 @@ export function AddComponentForm({
             shouldUpdate = true;
           }
         } else if (fileDetected === "css") {
+          // Check if any React/TSX file imports this CSS file as a module
+          let suggestedCssFilename = null;
+          for (const otherFile of prev) {
+            if (otherFile.language === "tsx" || otherFile.language === "jsx") {
+              // Look for CSS module imports like: import styles from './page.module.css'
+              const cssModuleImportMatch = otherFile.code.match(/import\s+\w+\s+from\s+['"]\.\/([^'"]+\.(?:module\.)?css)['"]/);
+              if (cssModuleImportMatch) {
+                const importedCssName = cssModuleImportMatch[1];
+                // If this CSS file matches the import (or is the only CSS file), use the imported name
+                if (f.filename === importedCssName || (prev.filter(f => f.language === "css").length === 1 && !f.filename.match(/\.(module\.)?css$/))) {
+                  suggestedCssFilename = importedCssName;
+                  break;
+                }
+              }
+            }
+          }
+          
           // CRITICAL: Ensure CSS files are detected as CSS
-          if (f.language !== "css" || currentExt !== "css") {
+          if (f.language !== "css" || currentExt !== "css" || suggestedCssFilename) {
             console.log(`[AddComponentForm] Updating ${f.filename} to CSS (detected: ${fileDetected})`);
             newLanguage = "css";
-            if (isDefaultFilename || currentExt !== "css") {
+            if (suggestedCssFilename) {
+              newFilename = suggestedCssFilename;
+            } else if (isDefaultFilename || currentExt !== "css") {
               newFilename = "styles.css";
             }
             shouldUpdate = true;

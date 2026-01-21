@@ -158,6 +158,8 @@ const SERVER_ONLY_BLOCKLIST = new Set([
   "next/headers",
   "@prisma/client",
   "prisma",
+  // Note: "next/image" is NOT in blocklist - it's a component, not server-only code
+  // We'll handle it specially in the preview runtime
 ]);
 
 /**
@@ -186,6 +188,10 @@ export function extractImports(code: string): string[] {
     imports.add(match[1]);
   }
 
+  // #region agent log
+  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:extractImports',message:'Extracted imports',data:{imports:Array.from(imports),count:imports.size},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
+
   return Array.from(imports);
 }
 
@@ -193,14 +199,24 @@ export function extractImports(code: string): string[] {
  * Validate if a package name is safe for browser auto-loading
  */
 export function isBrowserSafePackage(packageName: string): boolean {
+  // #region agent log
+  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:isBrowserSafePackage',message:'Checking browser safety',data:{packageName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
+
   // Block server-only packages
   if (SERVER_ONLY_BLOCKLIST.has(packageName)) {
+    // #region agent log
+    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:isBrowserSafePackage',message:'Package in SERVER_ONLY_BLOCKLIST',data:{packageName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     return false;
   }
 
   // Block dangerous patterns
   for (const pattern of DANGEROUS_PATTERNS) {
     if (pattern.test(packageName)) {
+      // #region agent log
+      fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:isBrowserSafePackage',message:'Package matches dangerous pattern',data:{packageName,pattern:pattern.toString()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       return false;
     }
   }
@@ -210,9 +226,15 @@ export function isBrowserSafePackage(packageName: string): boolean {
   // Allowed: lowercase, numbers, hyphens, underscores, dots, @scope/
   const npmPackageRegex = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
   if (!npmPackageRegex.test(packageName)) {
+    // #region agent log
+    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:isBrowserSafePackage',message:'Package name invalid format',data:{packageName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     return false;
   }
 
+  // #region agent log
+  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:isBrowserSafePackage',message:'Package is browser safe',data:{packageName},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   return true;
 }
 
@@ -230,9 +252,31 @@ export function isValidNpmPackage(name: string): boolean {
     return false;
   }
 
+  // Skip subpath imports (e.g., "gsap/ScrollTrigger", "next/image")
+  // These are not separate packages, they're subpaths of existing packages
+  if (name.includes('/') && !name.startsWith('@')) {
+    // Regular package with subpath (e.g., "gsap/ScrollTrigger")
+    const basePackage = name.split('/')[0];
+    // Only validate the base package part
+    const npmPackageRegex = /^[a-z0-9-~][a-z0-9-._~]*$/;
+    const isValidBase = npmPackageRegex.test(basePackage);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:isValidNpmPackage',message:'Subpath import detected',data:{name,basePackage,isValidBase},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    
+    return isValidBase;
+  }
+
   // Basic npm package name validation
   const npmPackageRegex = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
-  return npmPackageRegex.test(name);
+  const isValid = npmPackageRegex.test(name);
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:isValidNpmPackage',message:'Package validation result',data:{name,isValid},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  
+  return isValid;
 }
 
 /**
@@ -251,37 +295,98 @@ export function generateAutoCdnUrl(packageName: string): string {
 export type PreviewMode = "live" | "shimmed" | "auto" | "disabled";
 
 export function decidePreviewMode(imports: string[]): PreviewMode {
+  // #region agent log
+  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:decidePreviewMode',message:'decidePreviewMode called',data:{imports,importsCount:imports.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+  // #endregion
+
   const unknownDeps: string[] = [];
+  const unsafeDeps: string[] = [];
+  const skippedDeps: string[] = [];
 
   // Check for unsafe dependencies
   const hasUnsafeDeps = imports.some((imp) => {
     // Skip React - it's always available
-    if (imp === "react" || imp === "react-dom") return false;
+    if (imp === "react" || imp === "react-dom") {
+      skippedDeps.push(`${imp} (core)`);
+      return false;
+    }
 
-    // Skip local imports (handled by shims)
-    if (imp.startsWith('./') || imp.startsWith('../')) return false;
+    // Skip local imports (handled by shims/CSS modules)
+    if (imp.startsWith('./') || imp.startsWith('../')) {
+      skippedDeps.push(`${imp} (local)`);
+      return false;
+    }
+
+    // Skip subpath imports (e.g., "gsap/ScrollTrigger", "next/image")
+    // These are handled specially in the preview runtime, not as separate packages
+    if (imp.includes('/') && !imp.startsWith('@')) {
+      const basePackage = imp.split('/')[0];
+      // Check if base package is in blocklist (e.g., "next/server" -> block "next")
+      if (SERVER_ONLY_BLOCKLIST.has(basePackage)) {
+        unsafeDeps.push(imp);
+        // #region agent log
+        fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:decidePreviewMode',message:'Subpath import from blocked base package',data:{imp,basePackage},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        return true;
+      }
+      // Allow subpath imports from non-blocked packages (e.g., "gsap/ScrollTrigger", "next/image")
+      skippedDeps.push(`${imp} (subpath)`);
+      // #region agent log
+      fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:decidePreviewMode',message:'Subpath import allowed',data:{imp,basePackage},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      return false;
+    }
 
     // Check if it's in registry
-    if (dependencyRegistry[imp]) return false;
+    if (dependencyRegistry[imp]) {
+      skippedDeps.push(`${imp} (registry)`);
+      return false;
+    }
 
-    // Check if it's a valid npm package (if not valid, it's unsafe)
-    if (!isValidNpmPackage(imp)) return true;
+    // #region agent log
+    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:decidePreviewMode',message:'Checking package',data:{imp,isValidNpm:isValidNpmPackage(imp),isBrowserSafe:isBrowserSafePackage(imp)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
 
-    // Check if it's explicitly unsafe (server-only etc)
-    if (!isBrowserSafePackage(imp)) return true;
+    // Check if it's explicitly unsafe (server-only etc) - ONLY block these
+    if (!isBrowserSafePackage(imp)) {
+      unsafeDeps.push(imp);
+      // #region agent log
+      fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:decidePreviewMode',message:'Package marked unsafe',data:{imp,reason:'isBrowserSafePackage returned false'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      return true;
+    }
 
-    // Valid and safe - can auto-detect
-    unknownDeps.push(imp);
+    // For any valid npm package, allow auto-detection (more permissive)
+    if (isValidNpmPackage(imp)) {
+      unknownDeps.push(imp);
+      return false; // Allow auto-detection
+    }
+
+    // If it's not a valid npm package and not explicitly blocked, still allow it
+    // (might be a subpath import or something we can handle)
+    // #region agent log
+    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:decidePreviewMode',message:'Package not valid npm but allowing',data:{imp},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     return false;
   });
 
-  // If we have unsafe dependencies, disable preview
+  // #region agent log
+  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:decidePreviewMode',message:'Preview mode decision',data:{hasUnsafeDeps,unsafeDeps,unknownDeps,skippedDeps},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+  // #endregion
+
+  // Only disable if we have explicitly unsafe dependencies (server-only packages)
   if (hasUnsafeDeps) {
+    // #region agent log
+    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:decidePreviewMode',message:'Preview disabled',data:{unsafeDeps},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     return "disabled";
   }
 
   // If we have unknown but safe npm packages, use auto mode
   if (unknownDeps.length > 0) {
+    // #region agent log
+    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:decidePreviewMode',message:'Preview mode: auto',data:{unknownDeps},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     return "auto";
   }
 
@@ -290,7 +395,11 @@ export function decidePreviewMode(imports: string[]): PreviewMode {
     (imp) => dependencyRegistry[imp]?.type === "shim"
   );
 
-  return hasShims ? "shimmed" : "live";
+  const mode = hasShims ? "shimmed" : "live";
+  // #region agent log
+  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dependency-registry.ts:decidePreviewMode',message:'Preview mode: live/shimmed',data:{mode,hasShims},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+  // #endregion
+  return mode;
 }
 
 /**

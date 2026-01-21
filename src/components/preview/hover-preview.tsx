@@ -488,19 +488,29 @@ export function HoverPreview({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const [isFrameLoaded, setIsFrameLoaded] = useState(false);
 
   const srcDoc = useMemo(
     () => (isActive ? generateHoverPreviewDocument(files, framework) : ""),
     [files, framework, isActive]
   );
 
+  const postHtmlToFrame = useCallback((html: string) => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: "setPreviewHtml", html }, window.location.origin);
+  }, []);
+
   // Cleanup iframe when inactive to prevent memory leaks
   useEffect(() => {
     if (!isActive) {
       setIsLoaded(false);
+      setIsFrameLoaded(false);
       // Clear iframe srcDoc to stop execution
       if (iframeRef.current) {
-        iframeRef.current.srcdoc = "";
+        // If the frame is already running, blank it out; otherwise it will render
+        // the last state when it becomes visible again.
+        postHtmlToFrame("");
       }
       // Run cleanup if exists
       if (cleanupRef.current) {
@@ -530,6 +540,30 @@ export function HoverPreview({
     };
   }, [isActive, isLoaded]);
 
+  // When the preview document changes, push it into the frame.
+  useEffect(() => {
+    if (!isActive) return;
+    if (isFrameLoaded) {
+      postHtmlToFrame(srcDoc);
+    }
+  }, [srcDoc, isActive, isFrameLoaded, postHtmlToFrame]);
+
+  // Receive lifecycle messages from /preview/frame
+  useEffect(() => {
+    if (!isActive) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      const data = event.data as any;
+      if (!data || typeof data !== "object") return;
+      if (data.type === "preview:loaded") {
+        setIsLoaded(true);
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [isActive]);
+
   if (!isActive) {
     return null;
   }
@@ -549,9 +583,12 @@ export function HoverPreview({
       </div>
       <iframe
         ref={iframeRef}
-        srcDoc={srcDoc}
+        src="/preview/frame"
         sandbox="allow-scripts allow-same-origin"
-        onLoad={() => setIsLoaded(true)}
+        onLoad={() => {
+          setIsFrameLoaded(true);
+          postHtmlToFrame(srcDoc);
+        }}
         className="w-full h-full border-0 rounded-t-lg"
         title="Hover preview"
         loading="lazy"

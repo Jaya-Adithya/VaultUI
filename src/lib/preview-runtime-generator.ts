@@ -63,6 +63,15 @@ function scanTopLevelImports(code: string): { imports: ParsedImport[]; codeWitho
         const nextLine = lines[j];
         const nextTrimmed = nextLine.trim();
 
+        // If the next line starts a new import, do NOT treat it as a continuation.
+        // This supports semicolon-less import style:
+        //   import gsap from 'gsap'
+        //   import { ScrollTrigger } from 'gsap/ScrollTrigger';
+        if (nextTrimmed.startsWith("import")) {
+          j--; // back up so the outer loop processes the next import normally
+          break;
+        }
+
         // Stop if we hit a non-continuation line
         if (nextTrimmed && !nextTrimmed.match(/^(from|,|\{|\}|\*|\/\/)/) && !nextTrimmed.match(/^[a-zA-Z_$]/)) {
           j--; // Back up one line
@@ -175,6 +184,33 @@ function parseNamedList(list: string): Array<{ imported: string; local: string }
     .filter((x) => x.imported && x.local);
 }
 
+/**
+ * Extract class names from CSS to create a CSS module object
+ */
+function extractClassNamesFromCSS(cssCode: string): Record<string, string> {
+  const classNames: Record<string, string> = {};
+  
+  // Match CSS class selectors: .className { ... } or .className:something { ... }
+  // Also handle nested selectors and pseudo-classes
+  const classRegex = /\.([a-zA-Z_][a-zA-Z0-9_-]*)(?::[a-zA-Z-]+|\[[^\]]+\])?\s*\{/g;
+  let match;
+  const seen = new Set<string>();
+  
+  while ((match = classRegex.exec(cssCode)) !== null) {
+    const className = match[1];
+    // Avoid duplicates
+    if (seen.has(className)) continue;
+    seen.add(className);
+    
+    // CSS modules typically use camelCase or keep original name
+    // For simplicity, we'll use the original class name as both key and value
+    // In a real CSS module, the class name would be hashed, but for preview we'll use the original
+    classNames[className] = className;
+  }
+  
+  return classNames;
+}
+
 export interface PreviewRuntimeResult {
   mode: PreviewMode;
   runtimeCode: string | null;
@@ -190,12 +226,25 @@ export interface PreviewRuntimeResult {
  */
 export function generatePreviewRuntime(
   originalCode: string,
-  componentName?: string
+  componentName?: string,
+  allFiles?: Array<{ filename: string; code: string }>
 ): PreviewRuntimeResult {
   const imports = extractImports(originalCode);
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generatePreviewRuntime',message:'generatePreviewRuntime called',data:{imports,importsCount:imports.length,hasAllFiles:!!allFiles,allFilesCount:allFiles?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
+
   const mode = decidePreviewMode(imports);
 
+  // #region agent log
+  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generatePreviewRuntime',message:'Preview mode determined',data:{mode,imports},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+  // #endregion
+
   if (mode === "disabled") {
+    // #region agent log
+    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generatePreviewRuntime',message:'Preview disabled - returning error',data:{imports},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     return {
       mode: "disabled",
       runtimeCode: null,
@@ -213,7 +262,8 @@ export function generatePreviewRuntime(
   const previewSource = generatePreviewWrapperSource(
     originalCode,
     componentName,
-    mode === "auto"
+    mode === "auto",
+    allFiles
   );
 
   // IMPORTANT: this string is embedded into an HTML <script>. We must escape:
@@ -451,6 +501,10 @@ export function generatePreviewRuntime(
  * Uses dynamic imports for async compatibility
  */
 function generateDependencyLoader(imports: string[], allowAutoDetect: boolean = false): string {
+  // #region agent log
+  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generateDependencyLoader',message:'generateDependencyLoader called',data:{imports,allowAutoDetect},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
+
   const loaders: string[] = [];
   const shims: string[] = [];
   const autoDetected: string[] = [];
@@ -463,6 +517,37 @@ function generateDependencyLoader(imports: string[], allowAutoDetect: boolean = 
 
     // Skip React - handled separately
     if (imp === "react" || imp === "react-dom") return;
+
+    // Handle subpath imports (e.g., "gsap/ScrollTrigger", "next/image")
+    // These need to be loaded separately from their base package
+    if (imp.includes('/') && !imp.startsWith('@') && !imp.startsWith('./') && !imp.startsWith('../')) {
+      const basePackage = imp.split('/')[0];
+      const subpath = imp.substring(basePackage.length + 1);
+      
+      // For gsap subpath imports, load them from esm.sh
+      if (basePackage === 'gsap') {
+        const importName = imp.replace(/[^a-zA-Z0-9]/g, "_");
+        // Load the subpath import from esm.sh
+        // Note: gsap/ScrollTrigger exports ScrollTrigger as a named export, not default
+        loaders.push(`const ${importName}Module = await import("https://esm.sh/${imp}");`);
+        loaders.push(`const ${importName} = ${importName}Module.default || ${importName}Module;`);
+        loaders.push(`window.__deps = window.__deps || {};`);
+        loaders.push(`window.__deps["${imp}"] = ${importName}Module;`);
+        // Store the module itself (not just default) so named exports are accessible
+        loaders.push(`window.${importName} = ${importName}Module;`);
+        autoDetected.push(imp);
+        // #region agent log
+        fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generateDependencyLoader',message:'Loading gsap subpath import',data:{imp,basePackage,subpath},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+        return;
+      }
+      
+      // For other subpath imports (like next/image), skip - they're handled in preview wrapper
+      // #region agent log
+      fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generateDependencyLoader',message:'Skipping subpath import in loader',data:{imp},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      return;
+    }
 
     const config = getDependencyConfig(imp);
 
@@ -526,7 +611,8 @@ function generateDependencyLoader(imports: string[], allowAutoDetect: boolean = 
 function generatePreviewWrapperSource(
   originalCode: string,
   componentName?: string,
-  hasAutoDetected: boolean = false
+  hasAutoDetected: boolean = false,
+  allFiles?: Array<{ filename: string; code: string }>
 ): string {
   const { imports: parsedImports, codeWithoutImports } = scanTopLevelImports(originalCode);
   // Extract component name if not provided
@@ -549,6 +635,18 @@ function generatePreviewWrapperSource(
     const mod = imp.module;
     if (mod === "react" || mod === "react-dom") continue;
     if (mod.startsWith("./") || mod.startsWith("../")) continue;
+    
+    // Handle subpath imports (e.g., "gsap/ScrollTrigger")
+    if (mod.includes('/') && !mod.startsWith('@') && !mod.startsWith('./') && !mod.startsWith('../')) {
+      const basePackage = mod.split('/')[0];
+      if (basePackage === 'gsap') {
+        // GSAP subpath imports are loaded separately
+        moduleToDepVar[mod] = mod.replace(/[^a-zA-Z0-9]/g, "_");
+      }
+      // Other subpath imports (like next/image) are handled separately
+      continue;
+    }
+    
     const cfg = getDependencyConfig(mod);
     if (cfg?.type === "cdn") {
       moduleToDepVar[mod] = cfg.global || mod.replace(/[^a-zA-Z0-9]/g, "_");
@@ -595,8 +693,62 @@ function generatePreviewWrapperSource(
       continue;
     }
 
-    // Local shims: create alias bindings if needed.
+    // Local imports: handle CSS modules and shims
     if (mod.startsWith("./") || mod.startsWith("../")) {
+      // Check if it's a CSS module import (e.g., './page.module.css' or './styles.css')
+      if (mod.endsWith('.module.css') || mod.endsWith('.css')) {
+        // Find matching CSS file - be more flexible with matching
+        const cssModulePath = mod.replace(/^\.\//, '').replace(/^\.\.\//, '');
+        let cssFile = allFiles?.find(f => {
+          const fname = f.filename;
+          const importName = cssModulePath;
+          
+          // Exact match (case-sensitive first, then case-insensitive)
+          if (fname === importName) return true;
+          if (fname.toLowerCase() === importName.toLowerCase()) return true;
+          
+          // Match without path (just filename)
+          const fnameOnly = fname.split('/').pop() || fname;
+          const importNameOnly = importName.split('/').pop() || importName;
+          if (fnameOnly === importNameOnly) return true;
+          if (fnameOnly.toLowerCase() === importNameOnly.toLowerCase()) return true;
+          
+          return false;
+        });
+        
+        // If no exact match, try to find any CSS file (fallback)
+        if (!cssFile) {
+          cssFile = allFiles?.find((f) => f.filename.endsWith(".css"));
+        }
+        
+        if (cssFile && cssFile.code) {
+          // Generate CSS module object from CSS file
+          // Extract class names from CSS and create a styles object
+          const classNames = extractClassNamesFromCSS(cssFile.code);
+          const stylesObject = JSON.stringify(classNames);
+          
+          console.log(`[PreviewRuntime] CSS module import: ${mod} -> ${cssFile.filename}, classes:`, Object.keys(classNames));
+          
+          if (imp.kind === "default" && imp.defaultName) {
+            // Default import: import styles from './page.module.css'
+            declareOnce(imp.defaultName, stylesObject);
+          } else if (imp.kind === "namespace" && imp.namespaceName) {
+            // Namespace import: import * as styles from './page.module.css'
+            declareOnce(imp.namespaceName, stylesObject);
+          }
+        } else {
+          // CSS file not found, create empty styles object
+          console.warn(`[PreviewRuntime] CSS module file not found for import: ${mod}`);
+          if (imp.kind === "default" && imp.defaultName) {
+            declareOnce(imp.defaultName, '{}');
+          } else if (imp.kind === "namespace" && imp.namespaceName) {
+            declareOnce(imp.namespaceName, '{}');
+          }
+        }
+        continue;
+      }
+      
+      // Regular local shims
       if (imp.defaultName) {
         // no default export support for local shim modules (skip)
       }
@@ -619,7 +771,90 @@ function generatePreviewWrapperSource(
       if (imp.kind === "default" && imp.defaultName) {
         declareOnce(imp.defaultName, "window.React");
       }
-      // named React imports are unusual; ignore
+      // Handle named React imports (hooks etc.)
+      for (const n of imp.named ?? []) {
+        const imported = n.imported;
+        const local = n.local;
+        // #region agent log
+        fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generatePreviewWrapperSource',message:'Binding react named import',data:{imported,local},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
+        // #endregion
+        // Prefer window.React (set by runtime), fall back to deps if present
+        declareOnce(
+          local,
+          `(window.React && window.React.${imported}) || (window.__deps && window.__deps["react"] && (window.__deps["react"].${imported} || (window.__deps["react"].default && window.__deps["react"].default.${imported})))`
+        );
+      }
+      continue;
+    }
+
+    // Handle Next.js subpath imports (e.g., "next/image")
+    if (mod.startsWith("next/")) {
+      if (mod === "next/image") {
+        // Provide a shim for Next.js Image component
+        if (imp.kind === "default" && imp.defaultName) {
+          declareOnce(imp.defaultName, `function NextImage({ src, alt, width, height, className, ...props }) {
+            return React.createElement('img', {
+              src: src,
+              alt: alt || '',
+              width: width,
+              height: height,
+              className: className,
+              ...props
+            });
+          }`);
+        }
+      } else if (mod === "next/link") {
+        // Provide a shim for Next.js Link component
+        if (imp.kind === "default" && imp.defaultName) {
+          declareOnce(imp.defaultName, `function NextLink({ href, children, ...props }) {
+            return React.createElement('a', { href: href, ...props }, children);
+          }`);
+        }
+      } else {
+        // Other next/* imports - provide empty object
+        if (imp.kind === "default" && imp.defaultName) {
+          declareOnce(imp.defaultName, '{}');
+        } else if (imp.kind === "namespace" && imp.namespaceName) {
+          declareOnce(imp.namespaceName, '{}');
+        }
+      }
+      continue;
+    }
+
+    // Handle GSAP subpath imports (e.g., "gsap/ScrollTrigger")
+    if (mod.startsWith("gsap/")) {
+      const depVar = mod.replace(/[^a-zA-Z0-9]/g, "_");
+      // #region agent log
+      fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generatePreviewWrapperSource',message:'Processing gsap subpath import',data:{mod,depVar,hasModuleToDepVar:!!moduleToDepVar[mod],impKind:imp.kind,hasNamed:!!imp.named,namedCount:imp.named?.length,named:imp.named},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      
+      // Check if the module was loaded in the dependency loader
+      const loadedVar = moduleToDepVar[mod] || depVar;
+      
+      // Handle named imports: import { ScrollTrigger } from 'gsap/ScrollTrigger'
+      if ((imp.kind === "named" || imp.kind === "defaultNamed") && imp.named) {
+        for (const n of imp.named) {
+          const imported = n.imported;
+          const local = n.local;
+          // #region agent log
+          fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generatePreviewWrapperSource',message:'Binding gsap named import',data:{mod,loadedVar,imported,local},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
+          // Access named export from the module (gsap/ScrollTrigger exports ScrollTrigger as named export)
+          // Try multiple access patterns: window variable, window.__deps module, window.__deps module.default
+          declareOnce(local, `(window.${loadedVar} && window.${loadedVar}.${imported}) || (window.__deps && window.__deps["${mod}"] && window.__deps["${mod}"].${imported}) || (window.__deps && window.__deps["${mod}"] && window.__deps["${mod}"].default && window.__deps["${mod}"].default.${imported}) || (window.__deps && window.__deps["${mod}"] && window.__deps["${mod}"].default && window.__deps["${mod}"].default.${imported}) || {}`);
+        }
+      }
+      
+      // Default import: import ScrollTrigger from 'gsap/ScrollTrigger'
+      if (imp.kind === "default" && imp.defaultName) {
+        declareOnce(imp.defaultName, `(window.${loadedVar} && window.${loadedVar}.default) || (window.${loadedVar}) || (window.__deps && window.__deps["${mod}"]) || {}`);
+      }
+      
+      // Namespace import: import * as ScrollTrigger from 'gsap/ScrollTrigger'
+      if (imp.kind === "namespace" && imp.namespaceName) {
+        declareOnce(imp.namespaceName, `(window.${loadedVar}) || (window.__deps && window.__deps["${mod}"]) || {}`);
+      }
+      
       continue;
     }
 
@@ -674,9 +909,24 @@ function generatePreviewWrapperSource(
     componentVarName = constMatch?.[1] || functionMatch?.[1] || classMatch?.[1] || "ExportedComponent";
   }
 
+  const importsSummary = parsedImports.map((i) => ({
+    module: i.module,
+    kind: i.kind,
+    named: (i.named ?? []).map((n) => n.imported),
+  }));
+
   return `
     // Recreated bindings from original imports (preview-only)
     ${bindings.join("\n    ")}
+
+    // #region agent log
+    try {
+      const __vaultDeps = (window && (window as any).__deps) ? (window as any).__deps : {};
+      const __vaultSt = __vaultDeps["gsap/ScrollTrigger"];
+      const __vaultStDefault = __vaultSt && __vaultSt.default ? __vaultSt.default : null;
+      fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-wrapper:runtime',message:'GSAP ScrollTrigger runtime diagnostics',data:{imports:${JSON.stringify(importsSummary)},typeofScrollTrigger:typeof ScrollTrigger,hasWindowGsapScrollTrigger:typeof (window as any).gsap_ScrollTrigger !== 'undefined',windowGsapScrollTriggerKeys:Object.keys(((window as any).gsap_ScrollTrigger)||{}).slice(0,50),depsKeys:Object.keys(__vaultDeps).slice(0,50),scrollTriggerModuleKeys:Object.keys(__vaultSt||{}).slice(0,50),scrollTriggerDefaultKeys:Object.keys(__vaultStDefault||{}).slice(0,50)},timestamp:Date.now(),sessionId:'debug-session',runId:'runtime-check',hypothesisId:'B'})}).catch(()=>{});
+    } catch {}
+    // #endregion
     
     // Original code (imports removed, adapted for preview)
     ${previewCode}

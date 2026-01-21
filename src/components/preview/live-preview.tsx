@@ -179,7 +179,8 @@ function generateMultiFileHtmlDocument(
 
     // Generate preview runtime (original code is NOT modified)
     // Auto-detection happens automatically - no user prompts
-    const { mode, runtimeCode, error, autoDetectedPackages } = generatePreviewRuntime(reactCode);
+    // Pass all files to enable CSS module matching
+    const { mode, runtimeCode, error, autoDetectedPackages } = generatePreviewRuntime(reactCode, undefined, files);
 
     if (mode === "disabled" || !runtimeCode) {
       return `
@@ -478,7 +479,8 @@ function generateMultiFileHtmlDocument(
               font-size: 14px;
               white-space: pre-wrap;
               padding: 16px;
-              background: #111;
+              background: #1a1a1a;
+              color: #e5e5e5;
               border-radius: 8px;
             }
           </style>
@@ -520,26 +522,62 @@ export function LivePreview({ files, framework, className, onRun }: LivePreviewP
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFrameLoaded, setIsFrameLoaded] = useState(false);
 
   const srcDoc = useMemo(
     () => generateMultiFileHtmlDocument(files, framework),
     [files, framework]
   );
 
+  const postHtmlToFrame = useCallback(
+    (html: string) => {
+      const frame = iframeRef.current;
+      const win = frame?.contentWindow;
+      if (!win) return;
+      win.postMessage({ type: "setPreviewHtml", html }, window.location.origin);
+    },
+    []
+  );
+
   const handleReload = useCallback(() => {
     setKey((k) => k + 1);
     setIsLoading(true);
     setHasError(false);
+    setIsFrameLoaded(false);
   }, []);
 
   const handleLoad = useCallback(() => {
-    setIsLoading(false);
-  }, []);
+    setIsFrameLoaded(true);
+    // Send the latest HTML as soon as the frame is ready.
+    postHtmlToFrame(srcDoc);
+  }, [postHtmlToFrame, srcDoc]);
 
   useEffect(() => {
     setIsLoading(true);
     setHasError(false);
-  }, [srcDoc]);
+    // If the frame is already loaded, just update its content.
+    if (isFrameLoaded) {
+      postHtmlToFrame(srcDoc);
+    }
+  }, [srcDoc, isFrameLoaded, postHtmlToFrame]);
+
+  // Receive lifecycle messages from /preview/frame
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      const data = event.data as any;
+      if (!data || typeof data !== "object") return;
+      if (data.type === "preview:loaded") {
+        setIsLoading(false);
+      }
+      if (data.type === "preview:accepted") {
+        // keep spinner until the inner iframe actually loads
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -615,7 +653,7 @@ export function LivePreview({ files, framework, className, onRun }: LivePreviewP
         <iframe
           key={key}
           ref={iframeRef}
-          srcDoc={srcDoc}
+          src="/preview/frame"
           sandbox="allow-scripts allow-same-origin"
           onLoad={handleLoad}
           className="w-full h-full border-0"
