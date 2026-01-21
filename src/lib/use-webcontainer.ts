@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { WebContainer } from "@webcontainer/api";
+import { WebContainer, type WebContainerProcess } from "@webcontainer/api";
 
 interface TerminalOutput {
   type: "stdout" | "stderr" | "info" | "command";
@@ -21,7 +21,7 @@ export function useWebContainer(options: UseWebContainerOptions = {}) {
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<WebContainer | null>(null);
-  const processRef = useRef<ReturnType<WebContainer["spawn"]> | null>(null);
+  const processRef = useRef<WebContainerProcess | null>(null);
 
   const addOutput = useCallback(
     (type: TerminalOutput["type"], text: string) => {
