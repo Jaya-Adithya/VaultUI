@@ -96,9 +96,16 @@ export function AddComponentForm({
   // Handle paste area - create file when code is pasted
   useEffect(() => {
     if (pasteAreaCode.trim() && files.length === 0) {
-      // Auto-detect framework from pasted code
+      console.log("[AddComponentForm] Paste area code detected, length:", pasteAreaCode.length);
+      console.log("[AddComponentForm] Code preview:", pasteAreaCode.substring(0, 100));
+      
+      // Auto-detect framework from pasted code (without filename initially)
       const detected = detectFramework(pasteAreaCode);
+      console.log("[AddComponentForm] Detected framework from paste:", detected);
+      
       const detectedLanguage = detectLanguage(pasteAreaCode, detected);
+      console.log("[AddComponentForm] Detected language:", detectedLanguage);
+      
       const componentName = detected === "react" || detected === "next" 
         ? extractComponentName(pasteAreaCode) 
         : null;
@@ -127,13 +134,17 @@ export function AddComponentForm({
       } else if (detected === "css") {
         language = "css";
         filename = "styles.css";
+        console.log("[AddComponentForm] ✅ CSS detected correctly from paste");
       } else if (detected === "js") {
         language = "js";
         filename = "script.js";
       } else {
         language = "html";
         filename = "index.html";
+        console.log("[AddComponentForm] ⚠️ Could not detect type, defaulting to HTML");
       }
+      
+      console.log("[AddComponentForm] Creating file:", { filename, language, detected });
       
       // Create the file
       const newFile: FileTab = {
@@ -156,134 +167,178 @@ export function AddComponentForm({
   }, [pasteAreaCode, files.length, title]);
 
   // Auto-detect framework and component name when files change
+  // IMPORTANT: Detect per-file, not by combining all files (prevents CSS from being detected as HTML)
   useEffect(() => {
-    // Check all files for framework detection
+    if (files.length === 0) return;
+    
+    console.log("[AddComponentForm] Auto-detecting languages for files:", files.map(f => ({ 
+      filename: f.filename, 
+      currentLanguage: f.language,
+      codeLength: f.code.length 
+    })));
+    
+    // Detect framework per-file to avoid CSS being detected as HTML
+    setFiles(prev => {
+      const updated = prev.map(f => {
+        // Only detect if file has code
+        if (!f.code.trim()) {
+          console.log(`[AddComponentForm] Skipping detection for empty file: ${f.filename}`);
+          return f;
+        }
+
+        // Detect framework for THIS file specifically (not all files combined)
+        const fileDetected = detectFramework(f.code, f.filename);
+        const fileDetectedLanguage = detectLanguage(f.code, fileDetected);
+
+        console.log(`[AddComponentForm] File detection for ${f.filename}:`, {
+          currentLanguage: f.language,
+          detectedFramework: fileDetected,
+          detectedLanguage: fileDetectedLanguage,
+          codePreview: f.code.substring(0, 50)
+        });
+
+        let newLanguage = f.language;
+        let newFilename = f.filename;
+        let shouldUpdate = false;
+
+        const currentExt = f.filename.split('.').pop()?.toLowerCase();
+        const isDefaultFilename = f.filename === "index.html" ||
+          f.filename === "App.tsx" ||
+          f.filename === "App.jsx" ||
+          f.filename === "App.vue" ||
+          f.filename === "styles.css" ||
+          f.filename === "script.js" ||
+          !f.filename.match(/\.(tsx|jsx|vue|html|css|js|ts)$/);
+
+        // Use file-specific detection instead of global detection
+        if (fileDetected === "react" || fileDetected === "next") {
+          const expectedLanguage = fileDetectedLanguage === "tsx" ? "tsx" : "jsx";
+          if (f.language !== expectedLanguage || currentExt !== expectedLanguage || isDefaultFilename) {
+            newLanguage = expectedLanguage;
+            const componentName = extractComponentName(f.code);
+            if (componentName) {
+              newFilename = suggestFilename(componentName, expectedLanguage);
+            } else if (isDefaultFilename || currentExt !== expectedLanguage) {
+              newFilename = `Component.${expectedLanguage}`;
+            }
+            shouldUpdate = true;
+          }
+        } else if (fileDetected === "vue") {
+          if (f.language !== "vue" || currentExt !== "vue" || isDefaultFilename) {
+            newLanguage = "vue";
+            const nameMatch = f.code.match(/<script[^>]*>[\s\S]*?name\s*[:=]\s*['"]([^'"]+)['"]/i) ||
+                              f.code.match(/export\s+default\s+{\s*name\s*:\s*['"]([^'"]+)['"]/i);
+            if (nameMatch) {
+              newFilename = suggestFilename(nameMatch[1], "vue");
+            } else if (isDefaultFilename || currentExt !== "vue") {
+              newFilename = "App.vue";
+            }
+            shouldUpdate = true;
+          }
+        } else if (fileDetected === "html") {
+          if (f.language !== "html" || currentExt !== "html" || isDefaultFilename) {
+            newLanguage = "html";
+            const titleMatch = f.code.match(/<title[^>]*>([^<]+)<\/title>/i) ||
+                              f.code.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+            if (titleMatch) {
+              newFilename = `${titleMatch[1].trim().replace(/\s+/g, '-').toLowerCase()}.html`;
+            } else if (isDefaultFilename || currentExt !== "html") {
+              newFilename = "index.html";
+            }
+            shouldUpdate = true;
+          }
+        } else if (fileDetected === "css") {
+          // CRITICAL: Ensure CSS files are detected as CSS
+          if (f.language !== "css" || currentExt !== "css") {
+            console.log(`[AddComponentForm] Updating ${f.filename} to CSS (detected: ${fileDetected})`);
+            newLanguage = "css";
+            if (isDefaultFilename || currentExt !== "css") {
+              newFilename = "styles.css";
+            }
+            shouldUpdate = true;
+          }
+        } else if (fileDetected === "js") {
+          if (f.language !== "js" || currentExt !== "js") {
+            newLanguage = "js";
+            if (isDefaultFilename || currentExt !== "js") {
+              newFilename = "script.js";
+            }
+            shouldUpdate = true;
+          }
+        }
+
+        if (shouldUpdate) {
+          console.log(`[AddComponentForm] Updating ${f.filename}: ${f.language} -> ${newLanguage}, ${f.filename} -> ${newFilename}`);
+          return { ...f, filename: newFilename, language: newLanguage as Language };
+        }
+
+        return f;
+      });
+
+      // Only return new array if something actually changed
+      const hasChanges = updated.some((f, i) => 
+        f.filename !== prev[i]?.filename || f.language !== prev[i]?.language
+      );
+
+      return hasChanges ? updated : prev;
+    });
+
+    // Determine overall framework from all files (for display purposes)
     const allCode = files.map((f) => f.code).join("\n");
     if (allCode.trim()) {
-      const detected = detectFramework(allCode);
-      // If multiple file types, mark as "multi"
-      const uniqueLanguages = new Set(files.map((f) => f.language));
-      if (uniqueLanguages.size > 1 && (uniqueLanguages.has("html") || uniqueLanguages.has("css") || uniqueLanguages.has("js"))) {
-        setFramework("html"); // HTML+CSS+JS combo is treated as HTML
+      const uniqueLanguages = new Set(files.filter(f => f.code.trim()).map((f) => f.language));
+      
+      // If we have multiple file types, determine the primary framework
+      if (uniqueLanguages.size > 1) {
+        if (uniqueLanguages.has("html") || uniqueLanguages.has("css") || uniqueLanguages.has("js")) {
+          setFramework("html"); // HTML+CSS+JS combo is treated as HTML
+        } else if (uniqueLanguages.has("tsx") || uniqueLanguages.has("jsx")) {
+          const reactCode = files.find(f => f.language === "tsx" || f.language === "jsx")?.code || "";
+          const detected = detectFramework(reactCode);
+          setFramework(detected);
+        } else {
+          // Use the first file's detected framework
+          const firstFile = files.find(f => f.code.trim());
+          if (firstFile) {
+            const detected = detectFramework(firstFile.code, firstFile.filename);
+            setFramework(detected);
+          }
+        }
       } else {
-        setFramework(detected);
+        // Single file type - detect from that file
+        const fileWithCode = files.find(f => f.code.trim());
+        if (fileWithCode) {
+          const detected = detectFramework(fileWithCode.code, fileWithCode.filename);
+          setFramework(detected);
+        }
       }
-      
-      // Auto-detect component name and update filename based on detected framework
-      const detectedLanguage = detectLanguage(allCode, detected);
+
+      // Auto-detect component name from React/Vue files
       let componentName: string | null = null;
-      
-      // Extract component name based on detected framework (check all files, not just matching language)
-      if (detected === "react" || detected === "next") {
-        componentName = extractComponentName(allCode);
-      } else if (detected === "vue") {
-        const vueCode = files.find(f => f.code.trim())?.code || "";
-        const nameMatch = vueCode.match(/<script[^>]*>[\s\S]*?name\s*[:=]\s*['"]([^'"]+)['"]/i) ||
-                          vueCode.match(/export\s+default\s+{\s*name\s*:\s*['"]([^'"]+)['"]/i);
+      const reactFile = files.find(f => f.language === "tsx" || f.language === "jsx");
+      const vueFile = files.find(f => f.language === "vue");
+      const htmlFile = files.find(f => f.language === "html");
+
+      if (reactFile) {
+        componentName = extractComponentName(reactFile.code);
+      } else if (vueFile) {
+        const nameMatch = vueFile.code.match(/<script[^>]*>[\s\S]*?name\s*[:=]\s*['"]([^'"]+)['"]/i) ||
+                          vueFile.code.match(/export\s+default\s+{\s*name\s*:\s*['"]([^'"]+)['"]/i);
         if (nameMatch) {
           componentName = nameMatch[1];
         }
-      } else if (detected === "html") {
-        const htmlCode = files.find(f => f.code.trim())?.code || "";
-        const titleMatch = htmlCode.match(/<title[^>]*>([^<]+)<\/title>/i) ||
-                           htmlCode.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+      } else if (htmlFile) {
+        const titleMatch = htmlFile.code.match(/<title[^>]*>([^<]+)<\/title>/i) ||
+                           htmlFile.code.match(/<h1[^>]*>([^<]+)<\/h1>/i);
         componentName = titleMatch ? titleMatch[1].trim() : null;
       }
-      
-      // Update filename and language for ALL files that have code, based on detected framework
-      // Only update if there's an actual change needed to prevent infinite loops
-      setFiles(prev => {
-        const updated = prev.map(f => {
-          // Only update files that have code
-          if (!f.code.trim()) return f;
-          
-          // Determine what the file should be based on detected framework
-          let newLanguage = f.language;
-          let newFilename = f.filename;
-          let shouldUpdate = false;
-          
-          // Check if current file extension/language doesn't match detected framework
-          const currentExt = f.filename.split('.').pop()?.toLowerCase();
-          const isDefaultFilename = f.filename === "index.html" || 
-                                   f.filename === "App.tsx" || 
-                                   f.filename === "App.jsx" ||
-                                   f.filename === "App.vue" ||
-                                   !f.filename.match(/\.(tsx|jsx|vue|html|css|js|ts)$/);
-          
-          if (detected === "react" || detected === "next") {
-            const expectedLanguage = detectedLanguage === "tsx" ? "tsx" : "jsx";
-            const expectedExt = expectedLanguage;
-            
-            // Update if language/extension doesn't match
-            if (f.language !== expectedLanguage || currentExt !== expectedExt || isDefaultFilename) {
-              newLanguage = expectedLanguage;
-              if (componentName) {
-                newFilename = suggestFilename(componentName, expectedLanguage);
-              } else if (isDefaultFilename || currentExt !== expectedExt) {
-                newFilename = `Component.${expectedLanguage}`;
-              }
-              shouldUpdate = true;
-            }
-          } else if (detected === "vue") {
-            if (f.language !== "vue" || currentExt !== "vue" || isDefaultFilename) {
-              newLanguage = "vue";
-              if (componentName) {
-                newFilename = suggestFilename(componentName, "vue");
-              } else if (isDefaultFilename || currentExt !== "vue") {
-                newFilename = "App.vue";
-              }
-              shouldUpdate = true;
-            }
-          } else if (detected === "html") {
-            if (f.language !== "html" || currentExt !== "html" || isDefaultFilename) {
-              newLanguage = "html";
-              if (componentName) {
-                newFilename = `${componentName.replace(/\s+/g, '-').toLowerCase()}.html`;
-              } else if (isDefaultFilename || currentExt !== "html") {
-                newFilename = "index.html";
-              }
-              shouldUpdate = true;
-            }
-          } else if (detected === "css") {
-            if (f.language !== "css" || currentExt !== "css") {
-              newLanguage = "css";
-              if (isDefaultFilename || currentExt !== "css") {
-                newFilename = "styles.css";
-              }
-              shouldUpdate = true;
-            }
-          } else if (detected === "js") {
-            if (f.language !== "js" || currentExt !== "js") {
-              newLanguage = "js";
-              if (isDefaultFilename || currentExt !== "js") {
-                newFilename = "script.js";
-              }
-              shouldUpdate = true;
-            }
-          }
-          
-          // Only update if something actually changed
-          if (shouldUpdate && (f.filename !== newFilename || f.language !== newLanguage)) {
-            return { ...f, filename: newFilename, language: newLanguage as Language };
-          }
-          
-          return f;
-        });
-        
-        // Only return new array if something actually changed
-        const hasChanges = updated.some((f, i) => 
-          f.filename !== prev[i].filename || f.language !== prev[i].language
-        );
-        
-        return hasChanges ? updated : prev;
-      });
-      
+
       // Auto-update title if empty and we have a component name
       if (componentName && !title.trim()) {
         setTitle(componentName);
       }
     }
-  }, [files.map(f => f.code).join("\n"), title]);
+  }, [files.map(f => `${f.id}:${f.filename}:${f.code.length}`).join("|"), title]);
 
   const resetForm = () => {
     setTitle("");

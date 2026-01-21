@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
-import { RefreshCw, AlertTriangle, Maximize2, Minimize2 } from "lucide-react";
+import { AlertTriangle, Maximize2, Minimize2, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Framework } from "@/lib/detect-framework";
@@ -18,6 +18,7 @@ interface LivePreviewProps {
   files: ComponentFile[];
   framework: Framework;
   className?: string;
+  onRun?: () => void;
 }
 
 function generateMultiFileHtmlDocument(
@@ -513,7 +514,7 @@ function generateMultiFileHtmlDocument(
   `;
 }
 
-export function LivePreview({ files, framework, className }: LivePreviewProps) {
+export function LivePreview({ files, framework, className, onRun }: LivePreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [key, setKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -564,15 +565,18 @@ export function LivePreview({ files, framework, className }: LivePreviewProps) {
           Live Preview
         </span>
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6"
-            onClick={handleReload}
-            title="Reload preview"
-          >
-            <RefreshCw className="h-3 w-3" />
-          </Button>
+          {onRun && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+              onClick={onRun}
+              title="Run preview (Ctrl+R)"
+            >
+              <Play className="h-3 w-3 mr-1" />
+              Run
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"

@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Info,
   AlertTriangle,
+  Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -368,11 +369,63 @@ export function Playground({ componentId }: PlaygroundProps) {
   }, [installPackages]);
 
   const saveMutation = trpc.version.add.useMutation({
-    onSuccess: () => {
-      utils.component.getById.invalidate(componentId);
+    onSuccess: async (newVersion, variables) => {
+      console.log("[Playground Save] Save mutation success, new version:", newVersion);
+      console.log("[Playground Save] Variables:", variables);
+      
+      // Invalidate and refetch component to get updated versions list
+      await utils.component.getById.invalidate(componentId);
+      const updatedComponent = await utils.component.getById.fetch(componentId);
+      
+      console.log("[Playground Save] Updated component after save:", updatedComponent);
+      
+      if (updatedComponent && updatedComponent.versions.length > 0) {
+        // Check if we need to stay on a specific version number (for replace)
+        // This is stored on the mutation object by handleVersionSaveChoice
+        const stayOnVersionNumber = (saveMutation as any).__stayOnVersionNumber;
+        if (stayOnVersionNumber) {
+          delete (saveMutation as any).__stayOnVersionNumber; // Clean up
+        }
+        
+        let versionToSwitchTo;
+        if (stayOnVersionNumber) {
+          // When replacing, the newly created version becomes the latest
+          // But we want to stay on the version at the same position as the one we replaced
+          // After deletion and renumbering, the new version will be at the end (latest)
+          // So we need to find which version is at the position we replaced
+          
+          // The newly created version is always the latest (versions[0] since ordered desc)
+          // But we want to find the version that's at the position where we replaced
+          // Since we deleted a version and created a new one, the new one is the latest
+          // So we should use the latest version (the one we just created)
+          versionToSwitchTo = updatedComponent.versions[0]; // Latest version (the newly created one)
+          console.log("[Playground Save] Replacing - using newly created version (latest):", versionToSwitchTo);
+          console.log("[Playground Save] This version is at position where we replaced");
+        } else {
+          // Not replacing, use the newly created version (latest)
+          versionToSwitchTo = updatedComponent.versions[0]; // Latest version
+          console.log("[Playground Save] Using latest version (not replacing):", versionToSwitchTo);
+        }
+        
+        console.log("[Playground Save] Setting currentVersionId to:", versionToSwitchTo.id);
+        setCurrentVersionId(versionToSwitchTo.id);
+        
+        // Update files to match the version we're staying on
+        const versionFiles: FileTab[] = versionToSwitchTo.files.map((f) => ({
+          id: f.id,
+          filename: f.filename,
+          language: f.language as Language,
+          code: f.code,
+        }));
+        setFiles(versionFiles);
+        setOriginalFiles(versionFiles);
+        if (versionFiles.length > 0) {
+          setActiveFileId(versionFiles[0].id);
+        }
+      }
+      
       utils.component.list.invalidate();
       setHasUnsavedChanges(false);
-      setOriginalFiles(files);
     },
   });
 
@@ -394,26 +447,55 @@ export function Playground({ componentId }: PlaygroundProps) {
   useEffect(() => {
     if (component) {
       setTitle(component.title);
-      if (component.versions.length > 0 && !currentVersionId) {
-        const latestVersion = component.versions[0];
-        setCurrentVersionId(latestVersion.id);
+      
+      // Check if currentVersionId is still valid
+      const currentVersionExists = component.versions.some(v => v.id === currentVersionId);
+      
+      if (component.versions.length > 0) {
+        // If no currentVersionId or current version doesn't exist, use latest
+        if (!currentVersionId || !currentVersionExists) {
+          const latestVersion = component.versions[0];
+          console.log("[Playground] Setting currentVersionId to latest:", latestVersion.id);
+          setCurrentVersionId(latestVersion.id);
 
-        // Convert version files to FileTab format
-        const versionFiles: FileTab[] = latestVersion.files.map((f) => ({
-          id: f.id,
-          filename: f.filename,
-          language: f.language as Language,
-          code: f.code,
-        }));
+          // Convert version files to FileTab format
+          const versionFiles: FileTab[] = latestVersion.files.map((f) => ({
+            id: f.id,
+            filename: f.filename,
+            language: f.language as Language,
+            code: f.code,
+          }));
 
-        setFiles(versionFiles);
-        setOriginalFiles(versionFiles);
-        if (versionFiles.length > 0) {
-          setActiveFileId(versionFiles[0].id);
+          setFiles(versionFiles);
+          setOriginalFiles(versionFiles);
+          if (versionFiles.length > 0) {
+            setActiveFileId(versionFiles[0].id);
+          }
+        } else if (currentVersionExists) {
+          // Current version exists, make sure files are in sync
+          const currentVersion = component.versions.find(v => v.id === currentVersionId);
+          if (currentVersion) {
+            const versionFiles: FileTab[] = currentVersion.files.map((f) => ({
+              id: f.id,
+              filename: f.filename,
+              language: f.language as Language,
+              code: f.code,
+            }));
+            
+            // Only update if files have changed (to avoid overwriting user edits)
+            const filesChanged = JSON.stringify(files) !== JSON.stringify(versionFiles);
+            if (filesChanged && !hasUnsavedChanges) {
+              setFiles(versionFiles);
+              setOriginalFiles(versionFiles);
+              if (versionFiles.length > 0) {
+                setActiveFileId(versionFiles[0].id);
+              }
+            }
+          }
         }
       }
     }
-  }, [component, currentVersionId]);
+  }, [component, currentVersionId, hasUnsavedChanges]);
 
   // Handle version change
   const handleVersionChange = useCallback(
@@ -600,19 +682,55 @@ export function Playground({ componentId }: PlaygroundProps) {
     setHasUnsavedChanges(hasChanges);
   }, [files, originalFiles]);
 
-  // Auto-run preview when files change (debounced)
-  useEffect(() => {
+  // Track if initial load has happened and last version ID
+  const hasInitialRunRef = useRef(false);
+  const lastVersionIdRef = useRef<string | null>(null);
+
+  // Manual preview run function
+  const runPreview = useCallback(() => {
     if (files.length === 0) return;
+    setPreviewKey((prev) => prev + 1);
+  }, [files.length]);
 
-    // Don't clear console logs - let users see previous logs
-    // Only clear if explicitly requested by user
+  // Auto-run preview on initial load (when component loads with files)
+  useEffect(() => {
+    if (!component || files.length === 0) return;
+    // Run preview on initial load only once
+    if (!hasInitialRunRef.current) {
+      hasInitialRunRef.current = true;
+      lastVersionIdRef.current = currentVersionId;
+      setPreviewKey(1);
+    }
+  }, [component, files.length, currentVersionId]);
 
-    const timeoutId = setTimeout(() => {
+  // Auto-run preview when version changes (after initial load)
+  useEffect(() => {
+    if (files.length === 0 || !currentVersionId || !hasInitialRunRef.current) return;
+    // Only run if version actually changed
+    if (lastVersionIdRef.current !== currentVersionId) {
+      lastVersionIdRef.current = currentVersionId;
       setPreviewKey((prev) => prev + 1);
-    }, 300);
+    }
+  }, [currentVersionId, files.length]);
 
-    return () => clearTimeout(timeoutId);
-  }, [files]);
+  // Keyboard shortcut: Ctrl+R to run preview
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger when typing in input fields
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === "r") {
+        e.preventDefault();
+        runPreview();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [runPreview]);
 
   // Listen for console messages from iframe
   useEffect(() => {
@@ -741,53 +859,88 @@ export function Playground({ componentId }: PlaygroundProps) {
     }
   }, [componentId, files, saveMutation, updateMutation, isUntitled, saveNameInput, pendingNavigation]);
 
+  // Get current version object
+  const currentVersion = useMemo(() => {
+    if (!component || !currentVersionId) return null;
+    return component.versions.find(v => v.id === currentVersionId) || null;
+  }, [component, currentVersionId]);
+
   // Check if current version is the latest
   const isLatestVersion = useMemo(() => {
-    if (!component || !currentVersionId) return false;
-    return component.versions.length > 0 && component.versions[0]!.id === currentVersionId;
+    if (!component || !currentVersionId) {
+      console.log("[Playground] isLatestVersion check: no component or currentVersionId");
+      return false;
+    }
+    const isLatest = component.versions.length > 0 && component.versions[0]!.id === currentVersionId;
+    console.log("[Playground] isLatestVersion check:", {
+      isLatest,
+      currentVersionId,
+      latestVersionId: component.versions[0]?.id,
+      versionsCount: component.versions.length
+    });
+    return isLatest;
   }, [component, currentVersionId]);
+
+  // Debug: Track dialog state changes
+  useEffect(() => {
+    console.log("[Playground Save Dialog] State changed - isVersionSaveDialogOpen:", isVersionSaveDialogOpen);
+  }, [isVersionSaveDialogOpen]);
 
   // Handle save (regular save button)
   const handleSave = useCallback(() => {
-    if (!hasUnsavedChanges) return;
-
-    // If modifying the latest version, show dialog to choose replace or create new
-    if (isLatestVersion) {
-      setIsVersionSaveDialogOpen(true);
+    console.log("[Playground Save] ========== handleSave CALLED ==========");
+    console.log("[Playground Save] hasUnsavedChanges:", hasUnsavedChanges);
+    console.log("[Playground Save] currentVersionId:", currentVersionId);
+    console.log("[Playground Save] component versions:", component?.versions.map(v => ({ id: v.id, version: v.version })));
+    
+    if (!hasUnsavedChanges) {
+      console.log("[Playground Save] No unsaved changes, returning");
       return;
     }
 
-    // For older versions, always create new version
-    saveMutation.mutate({
-      componentId,
-      files: files
-        .filter((f) => f.code.trim())
-        .map((f, index) => ({
-          filename: f.filename,
-          language: f.language,
-          code: f.code,
-          order: index,
-        })),
-    });
-  }, [componentId, files, hasUnsavedChanges, saveMutation, isLatestVersion]);
+    // Show dialog for ALL versions (not just latest) to choose replace or create new
+    console.log("[Playground Save] ✅ Opening save dialog for version:", currentVersionId);
+    console.log("[Playground Save] Setting isVersionSaveDialogOpen to true");
+    setIsVersionSaveDialogOpen(true);
+    console.log("[Playground Save] Dialog state set, returning");
+  }, [componentId, files, hasUnsavedChanges, currentVersionId, component]);
 
   const deleteVersionMutation = trpc.version.delete.useMutation({
     onSuccess: async () => {
+      console.log("[Playground Save] Delete mutation success, invalidating component cache");
       // Invalidate to refresh component data after deletion
       await utils.component.getById.invalidate(componentId);
+      console.log("[Playground Save] Component cache invalidated");
     },
   });
 
   // Handle version save choice
   const handleVersionSaveChoice = useCallback((replace: boolean) => {
+    console.log("[Playground Save] ========== handleVersionSaveChoice CALLED ==========");
+    console.log("[Playground Save] replace:", replace);
+    console.log("[Playground Save] currentVersionId:", currentVersionId);
+    
+    // Store the current version info before deletion (for staying on the same version after replace)
+    const versionToReplace = component?.versions.find(v => v.id === currentVersionId);
+    const versionNumberToStayOn = versionToReplace?.version;
+    
     setIsVersionSaveDialogOpen(false);
+    console.log("[Playground Save] Dialog closed");
 
-    if (replace && currentVersionId) {
+    if (replace && currentVersionId && versionNumberToStayOn) {
+      console.log("[Playground Save] Replacing current version:", currentVersionId);
+      console.log("[Playground Save] Version number to stay on:", versionNumberToStayOn);
+      
       // Replace current version - delete old version first, then create new
-      // This keeps the version number the same (after renumbering)
+      // After deletion and renumbering, we'll find the version at the same position
       deleteVersionMutation.mutate(currentVersionId, {
-        onSuccess: () => {
+        onSuccess: async () => {
+          console.log("[Playground Save] Version deleted successfully, creating new version");
+          
           // After deletion, create new version
+          // Store the version number we want to stay on in a ref so saveMutation can access it
+          (saveMutation as any).__stayOnVersionNumber = versionNumberToStayOn;
+          
           saveMutation.mutate({
             componentId,
             files: files
@@ -801,7 +954,7 @@ export function Playground({ componentId }: PlaygroundProps) {
           });
         },
         onError: (error) => {
-          console.error('Failed to delete old version:', error);
+          console.error("[Playground Save] Error deleting version:", error);
           // Continue anyway - create new version
           saveMutation.mutate({
             componentId,
@@ -817,6 +970,7 @@ export function Playground({ componentId }: PlaygroundProps) {
         },
       });
     } else {
+      console.log("[Playground Save] Creating new version (not replacing)");
       // Create new version
       saveMutation.mutate({
         componentId,
@@ -830,7 +984,8 @@ export function Playground({ componentId }: PlaygroundProps) {
           })),
       });
     }
-  }, [componentId, files, saveMutation, currentVersionId, deleteVersionMutation]);
+    console.log("[Playground Save] ========== handleVersionSaveChoice COMPLETED ==========");
+  }, [componentId, files, saveMutation, currentVersionId, deleteVersionMutation, component]);
 
   // Handle navigation with unsaved changes check
   const handleNavigation = useCallback((navigateFn: () => void) => {
@@ -1209,6 +1364,7 @@ export function Playground({ componentId }: PlaygroundProps) {
               }))}
               framework={framework}
               className="h-full"
+              onRun={runPreview}
             />
           </div>
 
@@ -1479,38 +1635,50 @@ export function Playground({ componentId }: PlaygroundProps) {
       </Dialog>
 
       {/* Version Save Dialog */}
-      <Dialog open={isVersionSaveDialogOpen} onOpenChange={setIsVersionSaveDialogOpen}>
+      <Dialog 
+        open={isVersionSaveDialogOpen} 
+        onOpenChange={(open) => {
+          console.log("[Playground Save Dialog] onOpenChange called with:", open);
+          setIsVersionSaveDialogOpen(open);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Save Changes to Version {component?.versions[0]?.version}</DialogTitle>
+            <DialogTitle>Save Changes to Version {currentVersion ? `v${currentVersion.version}` : ''}</DialogTitle>
             <DialogDescription>
-              You are modifying the latest version (v{component?.versions[0]?.version}). How would you like to save your changes?
+              You are modifying version {currentVersion ? `v${currentVersion.version}` : ''}. How would you like to save your changes?
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-3">
             <Button
               variant="outline"
               className="w-full justify-start h-auto py-3 px-4"
-              onClick={() => handleVersionSaveChoice(false)}
-              disabled={saveMutation.isPending}
+              onClick={() => {
+                console.log("[Playground Save Dialog] Create New Version button clicked");
+                handleVersionSaveChoice(false);
+              }}
+              disabled={saveMutation.isPending || deleteVersionMutation.isPending}
             >
               <div className="flex flex-col items-start gap-1">
                 <span className="font-semibold">Create New Version</span>
                 <span className="text-xs text-muted-foreground">
-                  Save as v{(component?.versions[0]?.version ?? 0) + 1}. The current version will remain unchanged.
+                  Save as v{(component?.versions[0]?.version ?? 0) + 1}. The current version (v{currentVersion?.version}) will remain unchanged.
                 </span>
               </div>
             </Button>
             <Button
               variant="outline"
               className="w-full justify-start h-auto py-3 px-4"
-              onClick={() => handleVersionSaveChoice(true)}
-              disabled={saveMutation.isPending}
+              onClick={() => {
+                console.log("[Playground Save Dialog] Replace Current Version button clicked");
+                handleVersionSaveChoice(true);
+              }}
+              disabled={saveMutation.isPending || deleteVersionMutation.isPending}
             >
               <div className="flex flex-col items-start gap-1">
                 <span className="font-semibold">Replace Current Version</span>
                 <span className="text-xs text-muted-foreground">
-                  Update v{component?.versions[0]?.version} with your changes. The old version will be removed.
+                  Update v{currentVersion?.version} with your changes. The old version will be removed.
                 </span>
               </div>
             </Button>

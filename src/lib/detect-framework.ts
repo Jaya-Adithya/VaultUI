@@ -83,25 +83,28 @@ export function detectFramework(code: string, filename?: string): Framework {
 
   // Check for CSS BEFORE HTML (CSS has stronger indicators like @keyframes)
   // This fixes the issue where CSS files are detected as HTML
-  if (/@keyframes|@media|@import|@font-face|@supports|@page/.test(code)) {
-    console.log("[detectFramework] Detected CSS (@rules)");
+  // Priority 1: CSS @rules (most reliable)
+  if (/@keyframes|@media|@import|@font-face|@supports|@page|@charset|@namespace/.test(code)) {
+    console.log("[detectFramework] ✅ Detected CSS (@rules)");
     return "css";
   }
-  // CSS pattern: selector { property: value; }
-  if (/\.[\w-]+\s*\{|#[\w-]+\s*\{|[\w-]+\s*\{[\s\S]*?:\s*[^;]+;[\s\S]*?\}/.test(code) && 
-      !code.includes("import") && 
-      !code.includes("export") &&
-      !code.includes("function") &&
-      !code.includes("const") &&
-      !code.includes("let") &&
-      !code.includes("var")) {
-    console.log("[detectFramework] Detected CSS (selector pattern)");
+  
+  // Priority 2: CSS selector patterns with properties
+  // Match: .class { property: value; } or #id { property: value; } or element { property: value; }
+  const cssSelectorPattern = /([.#]?[\w-]+\s*\{[\s\S]*?:\s*[^;{}]+;[\s\S]*?\})/;
+  const hasCssSelectors = cssSelectorPattern.test(code);
+  const hasCssProperties = /(?:display|margin|padding|color|background|border|width|height|position|flex|grid|transform|animation|transition)\s*:/i.test(code);
+  const hasNoJsKeywords = !/(?:import|export|function|const|let|var|class|interface|type|return|if|else|for|while)\s+/.test(code);
+  const hasNoHtmlTags = !/<\/?[a-z][\s>]/.test(code);
+  
+  if (hasCssSelectors && hasCssProperties && hasNoJsKeywords && hasNoHtmlTags) {
+    console.log("[detectFramework] ✅ Detected CSS (selector + properties pattern)");
     return "css";
   }
-  if (/\{[\s\S]*?display\s*:|[\s\S]*?margin\s*:|[\s\S]*?padding\s*:|[\s\S]*?color\s*:|[\s\S]*?background\s*:|[\s\S]*?border\s*:/i.test(code) && 
-      !code.includes("import") && 
-      !code.includes("export")) {
-    console.log("[detectFramework] Detected CSS (properties)");
+  
+  // Priority 3: CSS property patterns (more lenient, but still check for JS/HTML exclusion)
+  if (hasCssProperties && hasNoJsKeywords && hasNoHtmlTags && code.includes("{") && code.includes("}")) {
+    console.log("[detectFramework] ✅ Detected CSS (properties pattern)");
     return "css";
   }
 
