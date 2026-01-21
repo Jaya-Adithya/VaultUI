@@ -46,7 +46,7 @@ export function addPackageTypeDefinitions(packageNames: string[]): void {
       // Force Monaco to refresh all models to pick up new type definitions
       // This ensures the editor recognizes the new types immediately
       if (monaco.editor) {
-        monaco.editor.getModels().forEach((model) => {
+        monaco.editor.getModels().forEach((model: any) => {
           // Trigger a model update to refresh diagnostics
           const value = model.getValue();
           model.setValue(value);
