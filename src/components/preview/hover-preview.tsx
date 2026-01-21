@@ -43,6 +43,15 @@ function generateHoverPreviewDocument(
       align-items: center;
       justify-content: center;
     }
+    #root-wrapper {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
     #root {
       display: flex;
       align-items: center;
@@ -51,14 +60,106 @@ function generateHoverPreviewDocument(
       height: 100%;
       max-width: 100%;
       max-height: 100%;
-      overflow: auto;
-      padding: 16px;
-      box-sizing: border-box;
     }
-    #root > * {
-      max-width: 100%;
-      max-height: 100%;
-    }
+  `;
+
+  // Optimized scale script - debounced and throttled to prevent hangs
+  const scaleScript = `
+    <script>
+      (function() {
+        const wrapper = document.getElementById('root-wrapper');
+        const root = document.getElementById('root');
+        let rafId = null;
+        let timeoutId = null;
+        let isUpdating = false;
+        
+        function updateScale() {
+          if (!wrapper || !root || isUpdating) return;
+          isUpdating = true;
+          
+          const containerWidth = wrapper.clientWidth;
+          const containerHeight = wrapper.clientHeight;
+          
+          if (containerWidth === 0 || containerHeight === 0) {
+            isUpdating = false;
+            timeoutId = setTimeout(updateScale, 100);
+            return;
+          }
+          
+          // Reset
+          root.style.transform = 'none';
+          root.style.width = 'auto';
+          root.style.height = 'auto';
+          root.style.maxWidth = 'none';
+          root.style.maxHeight = 'none';
+          
+          // Force reflow
+          void root.offsetWidth;
+          
+          // Get natural size
+          const naturalWidth = root.scrollWidth || root.offsetWidth || containerWidth;
+          const naturalHeight = root.scrollHeight || root.offsetHeight || containerHeight;
+          
+          if (naturalWidth === 0 || naturalHeight === 0 || naturalWidth === containerWidth) {
+            isUpdating = false;
+            timeoutId = setTimeout(updateScale, 150);
+            return;
+          }
+          
+          // Calculate scale
+          const scaleX = containerWidth / naturalWidth;
+          const scaleY = containerHeight / naturalHeight;
+          const scale = Math.min(scaleX, scaleY, 1);
+          
+          if (scale < 1) {
+            root.style.transform = 'scale(' + scale + ')';
+            root.style.transformOrigin = 'center center';
+            wrapper.style.display = 'flex';
+            wrapper.style.alignItems = 'center';
+            wrapper.style.justifyContent = 'center';
+          } else {
+            root.style.transform = 'none';
+          }
+          
+          isUpdating = false;
+        }
+        
+        function throttledUpdate() {
+          if (rafId) return;
+          rafId = requestAnimationFrame(() => {
+            updateScale();
+            rafId = null;
+          });
+        }
+        
+        // Throttled resize
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+          clearTimeout(resizeTimeout);
+          resizeTimeout = setTimeout(throttledUpdate, 150);
+        }, { passive: true });
+        
+        // Limited MutationObserver - only watch direct children, not subtree
+        const observer = new MutationObserver(() => {
+          throttledUpdate();
+        });
+        if (root) {
+          observer.observe(root, { childList: true, subtree: false });
+        }
+        
+        // Initial updates
+        setTimeout(updateScale, 150);
+        setTimeout(updateScale, 400);
+        setTimeout(updateScale, 1000);
+      })();
+    </script>
+  `;
+
+  const wrapContent = (content: string) => `
+    <div id="root-wrapper">
+      <div id="root">${content}</div>
+    </div>
+    ${scaleScript}
   `;
 
   // Extract code from files by type
@@ -73,7 +174,7 @@ function generateHoverPreviewDocument(
   const jsCode = jsFiles.map((f) => f.code).join("\n");
   const reactCode = reactFiles.map((f) => f.code).join("\n");
 
-  // Multi-file HTML+CSS+JS
+  // Multi-file HTML+CSS+JS (FULL INTERACTIVITY on hover)
   if (htmlFile) {
     return `
       <!DOCTYPE html>
@@ -88,7 +189,7 @@ function generateHoverPreviewDocument(
           </style>
         </head>
         <body>
-          <div id="root">${htmlCode}</div>
+          ${wrapContent(htmlCode)}
           ${jsCode ? `<script>
             // Wait for Tailwind to load before executing JS
             if (typeof tailwind !== 'undefined') {
@@ -131,7 +232,7 @@ function generateHoverPreviewDocument(
           </style>
         </head>
         <body>
-          <div id="root">${code}</div>
+          ${wrapContent(code)}
           ${jsCode ? `<script>
             // Wait for Tailwind to load before executing JS
             if (typeof tailwind !== 'undefined') {
@@ -172,13 +273,13 @@ function generateHoverPreviewDocument(
           </style>
         </head>
         <body>
-          <div id="root">
+          ${wrapContent(`
             <div class="preview-container">
               <div class="box">1</div>
               <div class="box">2</div>
               <div class="box">3</div>
             </div>
-          </div>
+          `)}
         </body>
       </html>
     `;
@@ -197,7 +298,10 @@ function generateHoverPreviewDocument(
           <style>${baseStyles}${cssCode}</style>
         </head>
         <body>
-          <div id="root"></div>
+          <div id="root-wrapper">
+             <div id="root"></div>
+          </div>
+          ${scaleScript}
           <script type="module">
             import { createApp, reactive, ref, computed } from "https://unpkg.com/vue@3/dist/vue.esm-browser.js";
             const source = \`${safeVueCode}\`;
@@ -212,7 +316,7 @@ function generateHoverPreviewDocument(
             const script = scriptMatch ? scriptMatch[1].trim() : null;
             
             if (!template) {
-              document.getElementById("root").innerHTML = '<div style="color:#ef4444;padding:16px;font-family:monospace;font-size:12px;">Vue preview: missing &lt;template&gt; block.</div>';
+              document.getElementById("root").innerHTML = '<div style="color:#ef4444;padding:16px;">Vue preview: missing &lt;template&gt; block.</div>';
             } else {
               try {
                 let componentOptions = { template };
@@ -240,7 +344,7 @@ function generateHoverPreviewDocument(
                 
                 createApp(componentOptions).mount("#root");
               } catch (e) {
-                document.getElementById("root").innerHTML = '<div style="color:#ef4444;padding:16px;font-family:monospace;font-size:12px;">Vue preview error: ' + (e.message || String(e)) + '</div>';
+                document.getElementById("root").innerHTML = '<div style="color:#ef4444;padding:16px;">Vue preview error: ' + (e.message || String(e)) + '</div>';
               }
             }
           </script>
@@ -252,8 +356,7 @@ function generateHoverPreviewDocument(
   if (framework === "react" || framework === "next") {
     const code = reactCode || (files[0]?.code ?? "");
 
-    // Generate preview runtime (original code is NOT modified)
-    // Auto-detection happens automatically - no user prompts
+    // Generate preview runtime
     const { mode, runtimeCode, error, autoDetectedPackages } = generatePreviewRuntime(code);
 
     if (mode === "disabled" || !runtimeCode) {
@@ -265,12 +368,12 @@ function generateHoverPreviewDocument(
             <style>${baseStyles}</style>
           </head>
           <body>
-            <div id="root">
-              <div style="color: #fbbf24; padding: 24px; text-align: center; font-family: system-ui;">
-                <p style="margin: 0 0 8px 0; font-weight: 600;">Preview Unavailable</p>
-                <p style="margin: 0; font-size: 14px; opacity: 0.8;">${error || "Code preserved - some dependencies not supported for preview"}</p>
+            ${wrapContent(`
+              <div style="color: #fbbf24; padding: 24px; text-align: center;">
+                <p>Preview Unavailable</p>
+                <p style="opacity: 0.8; font-size: 14px;">${error || "Code preserved - some dependencies not supported"}</p>
               </div>
-            </div>
+            `)}
           </body>
         </html>
       `;
@@ -286,8 +389,6 @@ function generateHoverPreviewDocument(
     const runtimeLiteral = JSON.stringify(runtimeCode)
       .replace(/\u2028/g, "\\u2028")
       .replace(/\u2029/g, "\\u2029")
-      .replace(/`/g, "\\`")
-      .replace(/\$/g, "\\$")
       .replace(/<\/script/gi, "<\\/script");
 
     return `
@@ -300,7 +401,10 @@ function generateHoverPreviewDocument(
         </head>
         <body style="position: relative;">
           ${autoBadge}
-          <div id="root"></div>
+          <div id="root-wrapper">
+             <div id="root"></div>
+          </div>
+          ${scaleScript}
           <script type="module">
             const root = document.getElementById('root');
             const escapeHtml = (s) =>
@@ -313,7 +417,7 @@ function generateHoverPreviewDocument(
                   ? \`\\n\\n[where] \${meta.filename || ""}:\${meta.lineno || ""}:\${meta.colno || ""}\`
                   : "";
               if (root) {
-                root.innerHTML = '<div style="color:#ef4444;padding:16px;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;font-size:12px;white-space:pre-wrap;background:#1a1a1a;border:1px solid #ef4444;border-radius:8px;">' +
+                root.innerHTML = '<div style="color:#ef4444;padding:16px;font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;white-space:pre-wrap;background:#1a1a1a;border:1px solid #ef4444;border-radius:8px;">' +
                   '<div style="font-weight:700; margin-bottom: 8px;">Preview Error</div>' +
                   '<pre style="margin:0; white-space:pre-wrap; overflow:auto;">' +
                   escapeHtml(msg + where) +
@@ -328,6 +432,7 @@ function generateHoverPreviewDocument(
               showError(e.reason || 'Unhandled promise rejection');
             });
 
+            // Load the generated runtime via Blob import so parse-time errors are catchable.
             const code = ${runtimeLiteral};
             const blob = new Blob([code], { type: 'text/javascript' });
             const url = URL.createObjectURL(blob);
@@ -363,9 +468,9 @@ function generateHoverPreviewDocument(
         </style>
       </head>
       <body>
-        <div id="root">
-          <div class="placeholder">Code preview</div>
-        </div>
+        ${wrapContent(`
+           <div class="placeholder">Code preview</div>
+        `)}
       </body>
     </html>
   `;
@@ -379,29 +484,47 @@ export function HoverPreview({
 }: HoverPreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const cleanupRef = useRef<(() => void) | null>(null);
 
   const srcDoc = useMemo(
     () => (isActive ? generateHoverPreviewDocument(files, framework) : ""),
     [files, framework, isActive]
   );
 
+  // Cleanup iframe when inactive to prevent memory leaks
   useEffect(() => {
     if (!isActive) {
       setIsLoaded(false);
+      // Clear iframe srcDoc to stop execution
+      if (iframeRef.current) {
+        iframeRef.current.srcDoc = "";
+      }
+      // Run cleanup if exists
+      if (cleanupRef.current) {
+        cleanupRef.current();
+        cleanupRef.current = null;
+      }
     }
   }, [isActive]);
 
-  // Timeout guard
+  // Timeout guard with cleanup
   useEffect(() => {
     if (!isActive) return;
 
     const timeout = setTimeout(() => {
       if (!isLoaded) {
-        setIsLoaded(true); // Force show even if not loaded
+        setIsLoaded(true);
       }
     }, 2000);
 
-    return () => clearTimeout(timeout);
+    cleanupRef.current = () => clearTimeout(timeout);
+
+    return () => {
+      if (cleanupRef.current) {
+        cleanupRef.current();
+        cleanupRef.current = null;
+      }
+    };
   }, [isActive, isLoaded]);
 
   if (!isActive) {
@@ -416,7 +539,7 @@ export function HoverPreview({
         className
       )}
     >
-      <div className="absolute top-2 right-2 z-20">
+      <div className="absolute top-2 right-2 z-20 pointer-events-none">
         <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-500/20 text-green-400 rounded">
           LIVE
         </span>
@@ -424,10 +547,11 @@ export function HoverPreview({
       <iframe
         ref={iframeRef}
         srcDoc={srcDoc}
-        sandbox="allow-scripts"
+        sandbox="allow-scripts allow-same-origin"
         onLoad={() => setIsLoaded(true)}
         className="w-full h-full border-0 rounded-t-lg"
         title="Hover preview"
+        loading="lazy"
       />
     </div>
   );
