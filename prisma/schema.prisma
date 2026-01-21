@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Component {
+  id           String    @id @default(uuid())
+  title        String
+  description  String?
+  framework    String    // react | next | html | css | js | multi | other
+  language     String    // tsx | jsx | html | css | js | multi
+  status       String    @default("experiment") // experiment | ready
+  isRenderable Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  versions    ComponentVersion[]
+  collections ComponentCollection[]
+}
+
+model ComponentVersion {
+  id          String   @id @default(uuid())
+  componentId String
+  version     Int
+  createdAt   DateTime @default(now())
+
+  component   Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  files       ComponentFile[]
+
+  @@index([componentId])
+}
+
+// New model to support multiple files per version
+model ComponentFile {
+  id        String @id @default(uuid())
+  versionId String
+  filename  String // e.g., "index.html", "styles.css", "script.js", "App.tsx"
+  language  String // html | css | js | tsx | jsx
+  code      String
+  order     Int    @default(0) // For ordering tabs
+
+  version   ComponentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([versionId])
+}
+
+model Collection {
+  id        String       @id @default(uuid())
+  name      String
+  slug      String       @unique
+  parentId  String?
+  parent    Collection?  @relation("CollectionTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Collection[]  @relation("CollectionTree")
+
+  components ComponentCollection[]
+}
+
+model ComponentCollection {
+  componentId  String
+  collectionId String
+
+  component  Component  @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@id([componentId, collectionId])
+}
