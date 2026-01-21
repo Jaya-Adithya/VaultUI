@@ -96,4 +96,65 @@ export const versionRouter = createTRPCRouter({
 
     return version;
   }),
+
+  delete: publicProcedure.input(z.string()).mutation(async ({ ctx, input }) => {
+    // Get the version to check if it's the only one
+    const version = await ctx.db.componentVersion.findUnique({
+      where: { id: input },
+      include: {
+        component: {
+          include: {
+            versions: {
+              orderBy: { version: "asc" },
+            },
+          },
+        },
+      },
+    });
+
+    if (!version) {
+      throw new Error("Version not found");
+    }
+
+    // Don't allow deleting if it's the only version
+    if (version.component.versions.length === 1) {
+      throw new Error("Cannot delete the only version of a component");
+    }
+
+    const componentId = version.componentId;
+
+    // Perform deletion and renumbering in a transaction
+    await ctx.db.$transaction(async (tx) => {
+      // Delete the version (files will be cascade deleted)
+      await tx.componentVersion.delete({
+        where: { id: input },
+      });
+
+      // Renumber all remaining versions starting from 1
+      // Get all remaining versions ordered by their current version number
+      const remainingVersions = await tx.componentVersion.findMany({
+        where: { componentId },
+        orderBy: { version: "asc" },
+      });
+
+      // Update each version to have sequential numbers starting from 1
+      for (let i = 0; i < remainingVersions.length; i++) {
+        const newVersionNumber = i + 1;
+        if (remainingVersions[i]!.version !== newVersionNumber) {
+          await tx.componentVersion.update({
+            where: { id: remainingVersions[i]!.id },
+            data: { version: newVersionNumber },
+          });
+        }
+      }
+
+      // Update component's updatedAt
+      await tx.component.update({
+        where: { id: componentId },
+        data: { updatedAt: new Date() },
+      });
+    });
+
+    return { success: true };
+  }),
 });

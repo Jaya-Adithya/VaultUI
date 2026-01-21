@@ -6,14 +6,19 @@ export const collectionRouter = createTRPCRouter({
     .input(
       z.object({
         name: z.string().min(1),
-        slug: z.string().min(1),
+        slug: z.string().min(1).optional(), // Make slug optional, generate if missing
+        parentId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Auto-generate slug if not provided
+      const slug = input.slug || input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + Math.random().toString(36).substring(2, 7);
+
       const collection = await ctx.db.collection.create({
         data: {
           name: input.name,
-          slug: input.slug,
+          slug: slug,
+          parentId: input.parentId,
         },
       });
 

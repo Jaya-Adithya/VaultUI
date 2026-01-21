@@ -310,6 +310,13 @@ export function generatePreviewRuntime(
           
           let transformed;
           try {
+            // DEBUG: Log source before transformation
+            console.log('[PreviewRuntime] Transforming source:', {
+              sourceLength: __VAULT_SOURCE__.length,
+              sourcePreview: __VAULT_SOURCE__.substring(0, 200),
+              hasJSX: /<[A-Z]/.test(__VAULT_SOURCE__) || /<svg/.test(__VAULT_SOURCE__) || /width=\\{/.test(__VAULT_SOURCE__)
+            });
+            
             transformed = Babel.transform(__VAULT_SOURCE__, {
               presets: [
                 ["typescript", { isTSX: true, allExtensions: true }],
@@ -317,7 +324,20 @@ export function generatePreviewRuntime(
               ],
               filename: "VaultPreview.tsx",
             }).code;
+            
+            // DEBUG: Log transformed code
+            console.log('[PreviewRuntime] Transformation successful:', {
+              transformedLength: transformed.length,
+              transformedPreview: transformed.substring(0, 300),
+              hasReactCreateElement: transformed.includes('React.createElement')
+            });
           } catch (compileError) {
+            // DEBUG: Log compilation error details
+            console.error('[PreviewRuntime] Babel compilation failed:', {
+              error: compileError.message || String(compileError),
+              sourcePreview: __VAULT_SOURCE__.substring(0, 500),
+              sourceLength: __VAULT_SOURCE__.length
+            });
             const errorMsg = compileError.message || String(compileError);
             let detailedMsg = "Babel compilation failed: " + errorMsg;
             

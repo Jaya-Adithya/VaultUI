@@ -10,20 +10,57 @@ export type Framework =
 
 export type Language = "tsx" | "jsx" | "ts" | "vue" | "html" | "css" | "js";
 
-export function detectFramework(code: string): Framework {
+export function detectFramework(code: string, filename?: string): Framework {
+  // DEBUG: Log detection attempt
+  console.log("[detectFramework] Detecting framework", { 
+    codeLength: code.length, 
+    filename,
+    codePreview: code.substring(0, 100) 
+  });
+
+  // Check filename extension FIRST (most reliable)
+  if (filename) {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    console.log("[detectFramework] Filename extension:", ext);
+    
+    if (ext === "css") {
+      console.log("[detectFramework] Detected CSS from filename");
+      return "css";
+    }
+    if (ext === "html" || ext === "htm") {
+      console.log("[detectFramework] Detected HTML from filename");
+      return "html";
+    }
+    if (ext === "js" || ext === "jsx") {
+      console.log("[detectFramework] Detected JS from filename");
+      return "js";
+    }
+    if (ext === "ts" || ext === "tsx") {
+      // Will be refined by React/Next checks below
+    }
+    if (ext === "vue") {
+      console.log("[detectFramework] Detected Vue from filename");
+      return "vue";
+    }
+  }
+
   // Check for Next.js specific patterns first
   if (code.includes('"use client"') || code.includes("'use client'")) {
+    console.log("[detectFramework] Detected Next.js (use client)");
     return "next";
   }
   if (code.includes('"use server"') || code.includes("'use server'")) {
+    console.log("[detectFramework] Detected Next.js (use server)");
     return "next";
   }
   if (/import\s+.*from\s+['"]next/.test(code)) {
+    console.log("[detectFramework] Detected Next.js (import next)");
     return "next";
   }
 
   // Check for React patterns
   if (/import\s+.*from\s+['"]react['"]/.test(code)) {
+    console.log("[detectFramework] Detected React (import react)");
     return "react";
   }
   if (
@@ -33,52 +70,78 @@ export function detectFramework(code: string): Framework {
     code.includes("useCallback") ||
     code.includes("useMemo")
   ) {
+    console.log("[detectFramework] Detected React (hooks)");
     return "react";
   }
   if (/export\s+(default\s+)?function\s+\w+.*\(/.test(code) && code.includes("return")) {
     // Check if it returns JSX-like content
     if (/<[A-Z]|<[a-z]+[\s>]/.test(code)) {
+      console.log("[detectFramework] Detected React (JSX return)");
       return "react";
     }
   }
 
-  // Check for HTML
+  // Check for CSS BEFORE HTML (CSS has stronger indicators like @keyframes)
+  // This fixes the issue where CSS files are detected as HTML
+  if (/@keyframes|@media|@import|@font-face|@supports|@page/.test(code)) {
+    console.log("[detectFramework] Detected CSS (@rules)");
+    return "css";
+  }
+  // CSS pattern: selector { property: value; }
+  if (/\.[\w-]+\s*\{|#[\w-]+\s*\{|[\w-]+\s*\{[\s\S]*?:\s*[^;]+;[\s\S]*?\}/.test(code) && 
+      !code.includes("import") && 
+      !code.includes("export") &&
+      !code.includes("function") &&
+      !code.includes("const") &&
+      !code.includes("let") &&
+      !code.includes("var")) {
+    console.log("[detectFramework] Detected CSS (selector pattern)");
+    return "css";
+  }
+  if (/\{[\s\S]*?display\s*:|[\s\S]*?margin\s*:|[\s\S]*?padding\s*:|[\s\S]*?color\s*:|[\s\S]*?background\s*:|[\s\S]*?border\s*:/i.test(code) && 
+      !code.includes("import") && 
+      !code.includes("export")) {
+    console.log("[detectFramework] Detected CSS (properties)");
+    return "css";
+  }
+
+  // Check for HTML (after CSS to avoid false positives)
   if (/<html|<!DOCTYPE/i.test(code)) {
+    console.log("[detectFramework] Detected HTML (!DOCTYPE)");
     return "html";
   }
   if (/<(div|span|p|h[1-6]|a|button|input|form|table|ul|ol|li|section|article|header|footer|main|nav)/i.test(code) && !code.includes("import")) {
+    console.log("[detectFramework] Detected HTML (tags)");
     return "html";
-  }
-
-  // Check for CSS
-  if (/@keyframes|@media|@import|@font-face/.test(code)) {
-    return "css";
-  }
-  if (/\{[\s\S]*?display\s*:|[\s\S]*?margin\s*:|[\s\S]*?padding\s*:|[\s\S]*?color\s*:/i.test(code) && !code.includes("import")) {
-    return "css";
   }
 
   // Check for JavaScript
   if (/function\s+\w+|const\s+\w+\s*=|let\s+\w+\s*=|var\s+\w+\s*=/.test(code)) {
+    console.log("[detectFramework] Detected JavaScript");
     return "js";
   }
 
   // Check for Vue patterns
   if (/import\s+.*from\s+['"]vue['"]/.test(code)) {
+    console.log("[detectFramework] Detected Vue (import vue)");
     return "vue";
   }
   if (/<template[\s>]/i.test(code) && /<script[\s>]/i.test(code)) {
+    console.log("[detectFramework] Detected Vue (SFC)");
     return "vue";
   }
 
   // Check for Angular patterns
   if (/import\s+.*from\s+['"]@angular\/core['"]/.test(code)) {
+    console.log("[detectFramework] Detected Angular");
     return "angular";
   }
   if (/@Component\s*\(/.test(code) || /@NgModule\s*\(/.test(code)) {
+    console.log("[detectFramework] Detected Angular (decorator)");
     return "angular";
   }
 
+  console.log("[detectFramework] No match, returning 'other'");
   return "other";
 }
 

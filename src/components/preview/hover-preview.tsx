@@ -432,9 +432,12 @@ function generateHoverPreviewDocument(
               showError(e.reason || 'Unhandled promise rejection');
             });
 
-            // Load the generated runtime via Blob import so parse-time errors are catchable.
-            const code = ${runtimeLiteral};
-            const blob = new Blob([code], { type: 'text/javascript' });
+            // Load the generated runtime via Blob import
+            // Use Base64 encoding to prevent HTML parsing issues with the code string
+            const runtimeCode = ${runtimeLiteral};
+            const encodedCode = btoa(unescape(encodeURIComponent(runtimeCode)));
+            
+            const blob = new Blob([decodeURIComponent(escape(atob(encodedCode)))], { type: 'text/javascript' });
             const url = URL.createObjectURL(blob);
             try {
               await import(url);
@@ -497,7 +500,7 @@ export function HoverPreview({
       setIsLoaded(false);
       // Clear iframe srcDoc to stop execution
       if (iframeRef.current) {
-        iframeRef.current.srcDoc = "";
+        iframeRef.current.srcdoc = "";
       }
       // Run cleanup if exists
       if (cleanupRef.current) {

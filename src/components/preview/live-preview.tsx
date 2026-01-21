@@ -262,10 +262,69 @@ function generateMultiFileHtmlDocument(
 
             window.addEventListener('error', (e) => {
               showError(e.error || e.message || 'Unknown error', { filename: e.filename, lineno: e.lineno, colno: e.colno });
+              window.parent.postMessage({ type: 'console', level: 'error', message: e.message || 'Unknown error' }, '*');
             });
             window.addEventListener('unhandledrejection', (e) => {
               showError(e.reason || 'Unhandled promise rejection');
+              window.parent.postMessage({ type: 'console', level: 'error', message: String(e.reason) || 'Unhandled promise rejection' }, '*');
             });
+
+            // Override console methods to send messages to parent
+            const originalConsole = { 
+              log: console.log, 
+              error: console.error, 
+              warn: console.warn, 
+              info: console.info,
+              debug: console.debug,
+              trace: console.trace,
+              table: console.table,
+              group: console.group,
+              groupEnd: console.groupEnd,
+            };
+            const formatArgs = (args) => {
+              try {
+                return args.map(a => {
+                  if (a === null) return 'null';
+                  if (a === undefined) return 'undefined';
+                  if (typeof a === 'object') {
+                    try {
+                      return JSON.stringify(a, null, 2);
+                    } catch {
+                      return String(a);
+                    }
+                  }
+                  return String(a);
+                }).join(' ');
+              } catch {
+                return String(args);
+              }
+            };
+            
+            // Override all console methods
+            console.log = (...args) => { 
+              originalConsole.log(...args); 
+              window.parent.postMessage({ type: 'console', level: 'log', message: formatArgs(args) }, '*'); 
+            };
+            console.error = (...args) => { 
+              originalConsole.error(...args); 
+              window.parent.postMessage({ type: 'console', level: 'error', message: formatArgs(args) }, '*'); 
+            };
+            console.warn = (...args) => { 
+              originalConsole.warn(...args); 
+              window.parent.postMessage({ type: 'console', level: 'warn', message: formatArgs(args) }, '*'); 
+            };
+            console.info = (...args) => { 
+              originalConsole.info(...args); 
+              window.parent.postMessage({ type: 'console', level: 'info', message: formatArgs(args) }, '*'); 
+            };
+            console.debug = (...args) => { 
+              originalConsole.debug(...args); 
+              window.parent.postMessage({ type: 'console', level: 'log', message: formatArgs(args) }, '*'); 
+            };
+            console.trace = (...args) => { 
+              originalConsole.trace(...args); 
+              window.parent.postMessage({ type: 'console', level: 'log', message: 'Trace: ' + formatArgs(args) }, '*'); 
+            };
 
             // Load the generated runtime via Blob import so parse-time errors are catchable.
             const code = ${runtimeLiteral};
@@ -553,7 +612,7 @@ export function LivePreview({ files, framework, className }: LivePreviewProps) {
           key={key}
           ref={iframeRef}
           srcDoc={srcDoc}
-          sandbox="allow-scripts"
+          sandbox="allow-scripts allow-same-origin"
           onLoad={handleLoad}
           className="w-full h-full border-0"
           title="Live preview"

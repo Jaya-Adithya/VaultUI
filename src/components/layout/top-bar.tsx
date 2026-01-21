@@ -10,6 +10,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 interface TopBarProps {
   onSearch: (query: string) => void;
@@ -57,6 +58,8 @@ export function TopBar({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <ThemeToggle />
+
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

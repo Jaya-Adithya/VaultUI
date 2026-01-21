@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -14,6 +14,12 @@ import {
   X,
   FileCode,
   FileText,
+  Terminal,
+  ChevronUp,
+  ChevronDown,
+  AlertCircle,
+  Info,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +54,14 @@ import { extractComponentName, suggestFilename } from "@/lib/parse-imports";
 import { extractImports } from "@/lib/dependency-registry";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { useWebContainer } from "@/lib/use-webcontainer";
+import { addPackageTypeDefinitions } from "@/lib/monaco-types";
+
+interface TerminalLine {
+  type: "stdout" | "stderr" | "info" | "command";
+  text: string;
+  timestamp: number;
+}
 
 interface PlaygroundProps {
   componentId: string;
@@ -94,8 +108,244 @@ export function Playground({ componentId }: PlaygroundProps) {
   const [originalFiles, setOriginalFiles] = useState<FileTab[]>([]);
   const [previewKey, setPreviewKey] = useState(0);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+  const [isVersionSaveDialogOpen, setIsVersionSaveDialogOpen] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<(() => void) | null>(null);
   const [saveNameInput, setSaveNameInput] = useState("");
+  const [editorWidth, setEditorWidth] = useState(50); // Percentage
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeContainerRef = useRef<HTMLDivElement>(null);
+
+  // Handle resizing
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizeContainerRef.current) return;
+
+      const containerRect = resizeContainerRef.current.getBoundingClientRect();
+      const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+
+      // Constrain between 20% and 80%
+      const constrainedWidth = Math.max(20, Math.min(80, newWidth));
+      setEditorWidth(constrainedWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove, { passive: false });
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing]);
+  const [isTerminalOpen, setIsTerminalOpen] = useState(false);
+  const [terminalTab, setTerminalTab] = useState<"terminal" | "console">("terminal");
+  const [terminalCommand, setTerminalCommand] = useState("");
+  const [terminalOutput, setTerminalOutput] = useState<TerminalLine[]>([]);
+  const [isRunningCommand, setIsRunningCommand] = useState(false);
+  const [consoleLogs, setConsoleLogs] = useState<Array<{ type: "log" | "error" | "warn" | "info"; message: string; timestamp: number }>>([]);
+  const terminalOutputRef = useRef<HTMLDivElement>(null);
+  const spinnerLineIndexRef = useRef<number>(-1); // Track which line index is the spinner line
+
+  // WebContainer hook for real terminal execution
+  const {
+    isBooting: isWebContainerBooting,
+    isReady: isWebContainerReady,
+    error: webContainerError,
+    boot: bootWebContainer,
+    runCommand: runWebContainerCommand,
+    mountFiles: mountWebContainerFiles,
+    readPackageJson: readWebContainerPackageJson,
+  } = useWebContainer({
+    onOutput: (output) => {
+      // Strip ANSI escape codes
+      let cleanText = output.text.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, "");
+
+      setTerminalOutput((prev) => {
+        const newOutput = [...prev];
+
+        // Check if this chunk contains \r (carriage return)
+        if (cleanText.includes("\r")) {
+          // Split by \r to get all parts
+          const parts = cleanText.split(/\r/);
+
+          // Process each part after a \r
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+
+            if (i === 0 && part) {
+              // First part (before any \r) - add as new line if it has content
+              if (part.trim()) {
+                newOutput.push({ ...output, text: part });
+                spinnerLineIndexRef.current = -1; // Not a spinner line
+              }
+            } else if (i > 0) {
+              // Parts after \r - these should overwrite the last line (spinner effect)
+              const content = part.trim();
+
+              // Check if this looks like a spinner character (single char: /, \, |, -)
+              const isSpinnerChar = content.length === 1 && /^[\/\\|\-]$/.test(content);
+
+              if (isSpinnerChar) {
+                // This is a spinner character - update the spinner line
+                if (spinnerLineIndexRef.current >= 0 && spinnerLineIndexRef.current < newOutput.length) {
+                  // Update existing spinner line
+                  newOutput[spinnerLineIndexRef.current] = {
+                    ...output,
+                    text: content,
+                    timestamp: Date.now(),
+                  };
+                } else {
+                  // Create new spinner line
+                  newOutput.push({
+                    ...output,
+                    text: content,
+                    timestamp: Date.now(),
+                  });
+                  spinnerLineIndexRef.current = newOutput.length - 1;
+                }
+              } else if (content) {
+                // Not a spinner, but has content - update last line or add new
+                if (newOutput.length > 0) {
+                  newOutput[newOutput.length - 1] = {
+                    ...output,
+                    text: content,
+                    timestamp: Date.now(),
+                  };
+                  spinnerLineIndexRef.current = -1; // Not a spinner line
+                } else {
+                  newOutput.push({ ...output, text: content });
+                  spinnerLineIndexRef.current = -1;
+                }
+              }
+              // If content is empty after \r, it means clear the line - we keep the line but empty
+            }
+          }
+
+          return newOutput.slice(-200);
+        } else {
+          // No \r in this chunk - normal line output
+          if (cleanText.trim() || output.text.trim().length > 0) {
+            spinnerLineIndexRef.current = -1; // Reset spinner tracking for new content
+            newOutput.push({ ...output, text: cleanText });
+          }
+
+          return newOutput.slice(-200);
+        }
+      });
+
+      // Auto-scroll to bottom
+      setTimeout(() => {
+        terminalOutputRef.current?.scrollTo({
+          top: terminalOutputRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 10);
+    },
+  });
+
+  // Auto-boot WebContainer when terminal is opened
+  useEffect(() => {
+    if (isTerminalOpen && terminalTab === "terminal" && !isWebContainerReady && !isWebContainerBooting) {
+      bootWebContainer().catch((err) => {
+        console.error("Failed to boot WebContainer:", err);
+      });
+    }
+  }, [isTerminalOpen, terminalTab, isWebContainerReady, isWebContainerBooting, bootWebContainer]);
+
+  // Mount files to WebContainer when they change (debounced)
+  useEffect(() => {
+    if (!isWebContainerReady || files.length === 0) return;
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const fileMap: Record<string, string> = {};
+
+        // Try to read existing package.json to preserve dependencies
+        let packageJson: any = {
+          name: "playground",
+          type: "module",
+          dependencies: {},
+        };
+
+        try {
+          const existing = await readWebContainerPackageJson();
+          if (existing) {
+            // Merge with existing, preserving installed dependencies
+            packageJson = {
+              ...packageJson,
+              ...existing,
+              dependencies: {
+                ...packageJson.dependencies,
+                ...(existing.dependencies || {}),
+              },
+            };
+          }
+        } catch (err) {
+          // If reading fails, use default
+          console.log("Using default package.json");
+        }
+
+        fileMap["package.json"] = JSON.stringify(packageJson, null, 2);
+
+        // Add all user files
+        for (const file of files) {
+          if (file.code.trim()) {
+            fileMap[file.filename] = file.code;
+          }
+        }
+
+        await mountWebContainerFiles(fileMap);
+      } catch (err) {
+        console.error("Failed to mount files:", err);
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [files, isWebContainerReady, mountWebContainerFiles, readWebContainerPackageJson]);
+
+  // Sync package.json after npm install commands complete and update editor types
+  useEffect(() => {
+    if (!isWebContainerReady || terminalOutput.length === 0) return;
+
+    // Check if last output indicates a completed npm install
+    const lastOutput = terminalOutput[terminalOutput.length - 1];
+    if (
+      lastOutput.type === "stdout" &&
+      (lastOutput.text.includes("added") ||
+        lastOutput.text.includes("up to date") ||
+        lastOutput.text.includes("removed") ||
+        lastOutput.text.includes("packages"))
+    ) {
+      // Small delay to ensure package.json is written
+      const timeoutId = setTimeout(async () => {
+        try {
+          const pkgJson = await readWebContainerPackageJson();
+          if (pkgJson?.dependencies) {
+            const installedPackages = Object.keys(pkgJson.dependencies);
+            console.log("Installed packages:", installedPackages);
+
+            // Add type definitions to Monaco editor
+            if (installedPackages.length > 0) {
+              addPackageTypeDefinitions(installedPackages);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to sync package.json:", err);
+        }
+      }, 1000); // Increased delay to ensure npm has finished writing
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [terminalOutput, isWebContainerReady, readWebContainerPackageJson]);
 
   const installPackages = useMemo(() => {
     const pkgs = new Set<string>();
@@ -190,43 +440,54 @@ export function Playground({ componentId }: PlaygroundProps) {
     [component?.versions]
   );
 
+  // Create a stable dependency string for file changes
+  const filesDependency = useMemo(() => {
+    return files.map(f => `${f.filename}:${f.language}:${f.code.length}`).join("|");
+  }, [files]);
+
   // Auto-detect framework and update filename/extension
   useEffect(() => {
     const allCode = files.map((f) => f.code).join("\n");
     if (!allCode.trim()) return;
-    
-    const detected = detectFramework(allCode);
-    const detectedLanguage = detectLanguage(allCode, detected);
-    
-    // Extract component name
-    let componentName: string | null = null;
-    if (detected === "react" || detected === "next") {
-      componentName = extractComponentName(allCode);
-    }
-    
-    // Update filename and language for files with code
-    // Only update if there's an actual change needed to prevent infinite loops
+
+    // Detect framework per-file (not combined) to avoid CSS being detected as HTML
+    // For each file, detect based on its own code and filename
+    console.log("[Playground] Auto-detecting framework for files:", files.map(f => ({ filename: f.filename, language: f.language })));
+
     setFiles(prev => {
       const updated = prev.map(f => {
         if (!f.code.trim()) return f;
-        
+
+        // Detect framework for THIS file specifically (not all files combined)
+        const fileDetected = detectFramework(f.code, f.filename);
+        const fileDetectedLanguage = detectLanguage(f.code, fileDetected);
+
+        console.log("[Playground] File detection:", {
+          filename: f.filename,
+          currentLanguage: f.language,
+          detectedFramework: fileDetected,
+          detectedLanguage: fileDetectedLanguage
+        });
+
         let newLanguage = f.language;
         let newFilename = f.filename;
         let shouldUpdate = false;
-        
+
         const currentExt = f.filename.split('.').pop()?.toLowerCase();
-        const isDefaultFilename = f.filename === "index.html" || 
-                                 f.filename === "App.tsx" || 
-                                 f.filename === "App.jsx" ||
-                                 f.filename === "App.vue" ||
-                                 !f.filename.match(/\.(tsx|jsx|vue|html|css|js|ts)$/);
-        
-        if (detected === "react" || detected === "next") {
-          const expectedLanguage = detectedLanguage === "tsx" ? "tsx" : "jsx";
+        const isDefaultFilename = f.filename === "index.html" ||
+          f.filename === "App.tsx" ||
+          f.filename === "App.jsx" ||
+          f.filename === "App.vue" ||
+          !f.filename.match(/\.(tsx|jsx|vue|html|css|js|ts)$/);
+
+        // Use file-specific detection instead of global detection
+        if (fileDetected === "react" || fileDetected === "next") {
+          const expectedLanguage = fileDetectedLanguage === "tsx" ? "tsx" : "jsx";
           const expectedExt = expectedLanguage;
-          
+
           if (f.language !== expectedLanguage || currentExt !== expectedExt || isDefaultFilename) {
             newLanguage = expectedLanguage;
+            const componentName = extractComponentName(f.code);
             if (componentName) {
               newFilename = suggestFilename(componentName, expectedLanguage);
             } else if (isDefaultFilename || currentExt !== expectedExt) {
@@ -234,7 +495,7 @@ export function Playground({ componentId }: PlaygroundProps) {
             }
             shouldUpdate = true;
           }
-        } else if (detected === "vue") {
+        } else if (fileDetected === "vue") {
           if (f.language !== "vue" || currentExt !== "vue" || isDefaultFilename) {
             newLanguage = "vue";
             if (isDefaultFilename || currentExt !== "vue") {
@@ -242,7 +503,7 @@ export function Playground({ componentId }: PlaygroundProps) {
             }
             shouldUpdate = true;
           }
-        } else if (detected === "html") {
+        } else if (fileDetected === "html") {
           if (f.language !== "html" || currentExt !== "html" || isDefaultFilename) {
             newLanguage = "html";
             if (isDefaultFilename || currentExt !== "html") {
@@ -250,55 +511,128 @@ export function Playground({ componentId }: PlaygroundProps) {
             }
             shouldUpdate = true;
           }
+        } else if (fileDetected === "css") {
+          // FIX: Handle CSS detection
+          if (f.language !== "css" || currentExt !== "css" || isDefaultFilename) {
+            newLanguage = "css";
+            if (isDefaultFilename || currentExt !== "css") {
+              newFilename = "styles.css";
+            }
+            shouldUpdate = true;
+          }
+        } else if (fileDetected === "js") {
+          if (f.language !== "js" || currentExt !== "js" || isDefaultFilename) {
+            newLanguage = "js";
+            if (isDefaultFilename || currentExt !== "js") {
+              newFilename = "script.js";
+            }
+            shouldUpdate = true;
+          }
         }
-        
+
         if (shouldUpdate && (f.filename !== newFilename || f.language !== newLanguage)) {
+          console.log("[Playground] Updating file:", {
+            from: { filename: f.filename, language: f.language },
+            to: { filename: newFilename, language: newLanguage }
+          });
           return { ...f, filename: newFilename, language: newLanguage as Language };
         }
-        
+
         return f;
       });
-      
+
       // Only return new array if something actually changed
-      const hasChanges = updated.some((f, i) => 
+      const hasChanges = updated.some((f, i) =>
         f.filename !== prev[i].filename || f.language !== prev[i].language
       );
-      
+
       return hasChanges ? updated : prev;
     });
-  }, [files.map(f => f.code).join("\n")]);
+  }, [filesDependency]); // Use stable dependency string
 
-  // Check for unsaved changes
+  // Check for unsaved changes - only when there's actual content difference
   useEffect(() => {
-    // Compare files by ID to handle reordering
-    if (files.length !== originalFiles.length) {
-      setHasUnsavedChanges(true);
+    // If no original files exist (new playground), only mark as changed if there's actual content
+    if (originalFiles.length === 0) {
+      const hasActualContent = files.some((file) => file.code.trim().length > 0);
+      setHasUnsavedChanges(hasActualContent);
       return;
     }
-    
+
+    // Compare files by ID to handle reordering
+    if (files.length !== originalFiles.length) {
+      // Check if the difference is meaningful (not just empty files)
+      const currentHasContent = files.some((f) => f.code.trim().length > 0);
+      const originalHasContent = originalFiles.some((f) => f.code.trim().length > 0);
+
+      // Only mark as changed if there's actual content difference
+      setHasUnsavedChanges(currentHasContent || originalHasContent);
+      return;
+    }
+
     const originalMap = new Map(originalFiles.map(f => [f.id, f]));
     const hasChanges = files.some((file) => {
       const original = originalMap.get(file.id);
-      return (
-        !original ||
-        file.code !== original.code ||
-        file.filename !== original.filename
-      );
+
+      if (!original) {
+        // New file - only count as change if it has content
+        return file.code.trim().length > 0;
+      }
+
+      // Compare trimmed content to ignore whitespace-only changes
+      const currentCode = file.code.trim();
+      const originalCode = original.code.trim();
+
+      // Check if there's actual content difference
+      if (currentCode !== originalCode) {
+        // Only count as change if both aren't empty or one has content
+        return currentCode.length > 0 || originalCode.length > 0;
+      }
+
+      // Filename change is also a change
+      if (file.filename !== original.filename) {
+        return true;
+      }
+
+      return false;
     });
-    
+
     setHasUnsavedChanges(hasChanges);
   }, [files, originalFiles]);
 
   // Auto-run preview when files change (debounced)
   useEffect(() => {
     if (files.length === 0) return;
-    
+
+    // Don't clear console logs - let users see previous logs
+    // Only clear if explicitly requested by user
+
     const timeoutId = setTimeout(() => {
       setPreviewKey((prev) => prev + 1);
     }, 300);
 
     return () => clearTimeout(timeoutId);
   }, [files]);
+
+  // Listen for console messages from iframe
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Accept messages from any origin (iframe sandbox)
+      if (event.data && event.data.type === "console") {
+        setConsoleLogs((prev) => [
+          ...prev.slice(-199), // Keep last 200 logs (increased from 100)
+          {
+            type: event.data.level || "log",
+            message: event.data.message || String(event.data),
+            timestamp: Date.now(),
+          },
+        ]);
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
 
   // Handle code change for active file
   const handleCodeChange = useCallback(
@@ -407,10 +741,23 @@ export function Playground({ componentId }: PlaygroundProps) {
     }
   }, [componentId, files, saveMutation, updateMutation, isUntitled, saveNameInput, pendingNavigation]);
 
+  // Check if current version is the latest
+  const isLatestVersion = useMemo(() => {
+    if (!component || !currentVersionId) return false;
+    return component.versions.length > 0 && component.versions[0]!.id === currentVersionId;
+  }, [component, currentVersionId]);
+
   // Handle save (regular save button)
   const handleSave = useCallback(() => {
     if (!hasUnsavedChanges) return;
 
+    // If modifying the latest version, show dialog to choose replace or create new
+    if (isLatestVersion) {
+      setIsVersionSaveDialogOpen(true);
+      return;
+    }
+
+    // For older versions, always create new version
     saveMutation.mutate({
       componentId,
       files: files
@@ -422,7 +769,68 @@ export function Playground({ componentId }: PlaygroundProps) {
           order: index,
         })),
     });
-  }, [componentId, files, hasUnsavedChanges, saveMutation]);
+  }, [componentId, files, hasUnsavedChanges, saveMutation, isLatestVersion]);
+
+  const deleteVersionMutation = trpc.version.delete.useMutation({
+    onSuccess: async () => {
+      // Invalidate to refresh component data after deletion
+      await utils.component.getById.invalidate(componentId);
+    },
+  });
+
+  // Handle version save choice
+  const handleVersionSaveChoice = useCallback((replace: boolean) => {
+    setIsVersionSaveDialogOpen(false);
+
+    if (replace && currentVersionId) {
+      // Replace current version - delete old version first, then create new
+      // This keeps the version number the same (after renumbering)
+      deleteVersionMutation.mutate(currentVersionId, {
+        onSuccess: () => {
+          // After deletion, create new version
+          saveMutation.mutate({
+            componentId,
+            files: files
+              .filter((f) => f.code.trim())
+              .map((f, index) => ({
+                filename: f.filename,
+                language: f.language,
+                code: f.code,
+                order: index,
+              })),
+          });
+        },
+        onError: (error) => {
+          console.error('Failed to delete old version:', error);
+          // Continue anyway - create new version
+          saveMutation.mutate({
+            componentId,
+            files: files
+              .filter((f) => f.code.trim())
+              .map((f, index) => ({
+                filename: f.filename,
+                language: f.language,
+                code: f.code,
+                order: index,
+              })),
+          });
+        },
+      });
+    } else {
+      // Create new version
+      saveMutation.mutate({
+        componentId,
+        files: files
+          .filter((f) => f.code.trim())
+          .map((f, index) => ({
+            filename: f.filename,
+            language: f.language,
+            code: f.code,
+            order: index,
+          })),
+      });
+    }
+  }, [componentId, files, saveMutation, currentVersionId, deleteVersionMutation]);
 
   // Handle navigation with unsaved changes check
   const handleNavigation = useCallback((navigateFn: () => void) => {
@@ -597,6 +1005,7 @@ export function Playground({ componentId }: PlaygroundProps) {
             versions={component.versions}
             currentVersionId={currentVersionId ?? ""}
             onVersionChange={handleVersionChange}
+            componentId={componentId}
           />
 
           <div className="flex items-center gap-1">
@@ -657,9 +1066,17 @@ export function Playground({ componentId }: PlaygroundProps) {
       </header>
 
       {/* Editor + Preview Split */}
-      <div className="flex flex-1 overflow-hidden">
+      <div ref={resizeContainerRef} className="flex flex-1 overflow-hidden relative">
+        {/* Resize Overlay - captures mouse events when resizing to prevent iframe from swallowing them */}
+        {isResizing && (
+          <div className="absolute inset-0 z-50 cursor-col-resize select-none" />
+        )}
+
         {/* Editor Panel */}
-        <div className="w-1/2 border-r border-border/40 flex flex-col">
+        <div
+          className="border-r border-border/40 flex flex-col"
+          style={{ width: `${editorWidth}%`, minWidth: 0 }}
+        >
           {/* File Tabs */}
           <div className="flex items-center gap-1 px-2 py-1 border-b border-border/40 bg-muted/30 overflow-x-auto">
             {files.map((file) => (
@@ -735,31 +1152,50 @@ export function Playground({ componentId }: PlaygroundProps) {
           </div>
         </div>
 
+        {/* Resizer */}
+        <div
+          data-resizer
+          className="w-1.5 bg-border/40 hover:bg-border cursor-col-resize transition-colors group relative z-20 flex-shrink-0 select-none"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsResizing(true);
+          }}
+          style={{ cursor: 'col-resize' }}
+        >
+          <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-1 bg-transparent group-hover:bg-primary/20 transition-colors" />
+        </div>
+
         {/* Preview Panel */}
-        <div className="w-1/2 flex flex-col gap-2">
+        <div
+          className="flex flex-col"
+          style={{ width: `${100 - editorWidth}%`, minWidth: 0 }}
+        >
+          {/* Install Command - Always visible at top when present */}
           {installCommand && (
-            <div className="rounded-lg border border-border/40 bg-background/40 px-3 py-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-medium text-muted-foreground">
-                  Install dependencies for this component
-                </div>
+            <div className="border-b border-zinc-800 bg-zinc-950 px-3 py-2">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-[10px] uppercase tracking-wider text-zinc-500">
+                  Install Dependencies
+                </span>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7"
+                  className="h-5 w-5 text-zinc-500 hover:text-zinc-300"
                   onClick={handleCopyDeps}
                   title="Copy install command"
                 >
                   {isDepsCopied ? (
-                    <Check className="h-4 w-4" />
+                    <Check className="h-3 w-3 text-green-500" />
                   ) : (
-                    <Copy className="h-4 w-4" />
+                    <Copy className="h-3 w-3" />
                   )}
                 </Button>
               </div>
-              <div className="mt-1 font-mono text-xs text-foreground/90 break-all">
+              <code className="block font-mono text-xs text-emerald-400 bg-zinc-900 rounded px-2 py-1.5 overflow-x-auto">
+                <span className="text-zinc-600 select-none">$ </span>
                 {installCommand}
-              </div>
+              </code>
             </div>
           )}
 
@@ -774,6 +1210,218 @@ export function Playground({ componentId }: PlaygroundProps) {
               framework={framework}
               className="h-full"
             />
+          </div>
+
+          {/* Terminal/Console Panel */}
+          <div className="border-t border-zinc-800 bg-zinc-950">
+            {/* Tab Header */}
+            <div className="flex items-center justify-between border-b border-zinc-800">
+              <div className="flex items-center">
+                {/* Terminal Tab */}
+                <button
+                  onClick={() => { setIsTerminalOpen(true); setTerminalTab("terminal"); }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-px",
+                    terminalTab === "terminal" && isTerminalOpen
+                      ? "text-zinc-200 border-zinc-200"
+                      : "text-zinc-500 border-transparent hover:text-zinc-300"
+                  )}
+                >
+                  <Terminal className="h-3.5 w-3.5" />
+                  <span>Terminal</span>
+                </button>
+
+                {/* Console Tab */}
+                <button
+                  onClick={() => { setIsTerminalOpen(true); setTerminalTab("console"); }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-px",
+                    terminalTab === "console" && isTerminalOpen
+                      ? "text-zinc-200 border-zinc-200"
+                      : "text-zinc-500 border-transparent hover:text-zinc-300"
+                  )}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>Console</span>
+                  {consoleLogs.length > 0 && (
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-zinc-800 text-zinc-300">
+                      {consoleLogs.length}
+                    </Badge>
+                  )}
+                </button>
+              </div>
+
+              {/* Collapse/Expand */}
+              <button
+                onClick={() => setIsTerminalOpen(!isTerminalOpen)}
+                className="px-3 py-2 text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                {isTerminalOpen ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </div>
+
+            {/* Panel Content */}
+            {isTerminalOpen && (
+              <div className="max-h-64 flex flex-col">
+                {/* Terminal Content */}
+                {terminalTab === "terminal" && (
+                  <div className="flex flex-col h-full">
+                    {/* Terminal Output */}
+                    <div
+                      ref={terminalOutputRef}
+                      className="flex-1 min-h-[100px] max-h-[180px] overflow-y-auto px-3 py-2 font-mono text-xs bg-zinc-950 scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-zinc-900"
+                    >
+                      {terminalOutput.length === 0 && !isWebContainerBooting && (
+                        <div className="text-zinc-500 italic">
+                          {webContainerError ? (
+                            <div className="flex items-center gap-2 text-red-400">
+                              <AlertCircle className="h-3.5 w-3.5" />
+                              <span>Error: {webContainerError}</span>
+                            </div>
+                          ) : !isWebContainerReady ? (
+                            <span>Initializing terminal...</span>
+                          ) : (
+                            <span>Type a command and press Enter to run it (e.g., npm install lodash)</span>
+                          )}
+                        </div>
+                      )}
+                      {isWebContainerBooting && terminalOutput.length === 0 && (
+                        <div className="flex items-center gap-2 text-amber-400">
+                          <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+                          <span>Booting WebContainer...</span>
+                        </div>
+                      )}
+                      {terminalOutput.map((line, i) => (
+                        <div
+                          key={`${line.timestamp}-${i}`}
+                          className={cn(
+                            "whitespace-pre-wrap break-words leading-relaxed py-0.5",
+                            line.type === "command" && "text-cyan-300 font-semibold",
+                            line.type === "stdout" && "text-zinc-200",
+                            line.type === "stderr" && "text-red-300 bg-red-950/20 px-1 rounded",
+                            line.type === "info" && "text-amber-300"
+                          )}
+                        >
+                          {line.text}
+                        </div>
+                      ))}
+                      {isRunningCommand && (
+                        <div className="flex items-center gap-2 text-zinc-400">
+                          <div className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-pulse" />
+                          <span className="italic">Running command...</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Command Input */}
+                    <div className="border-t border-zinc-800 px-3 py-2 bg-zinc-950">
+                      <div className="flex items-center gap-2 bg-zinc-900 rounded px-2 py-1.5 border border-zinc-800 focus-within:border-zinc-700 transition-colors">
+                        <span className="text-emerald-400 font-mono text-xs select-none font-semibold">$</span>
+                        <input
+                          type="text"
+                          value={terminalCommand}
+                          onChange={(e) => setTerminalCommand(e.target.value)}
+                          onKeyDown={async (e) => {
+                            if (e.key === "Enter" && terminalCommand.trim() && !isRunningCommand && isWebContainerReady) {
+                              const cmd = terminalCommand.trim();
+                              setTerminalCommand("");
+                              setIsRunningCommand(true);
+                              try {
+                                await runWebContainerCommand(cmd);
+                              } catch (err) {
+                                console.error("Command execution error:", err);
+                              } finally {
+                                setIsRunningCommand(false);
+                              }
+                            }
+                          }}
+                          placeholder={
+                            !isWebContainerReady
+                              ? "Initializing..."
+                              : isRunningCommand
+                                ? "Running..."
+                                : "Type command and press Enter..."
+                          }
+                          disabled={isRunningCommand || !isWebContainerReady}
+                          className="flex-1 bg-transparent border-0 outline-none font-mono text-xs text-zinc-100 placeholder:text-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+                        {isWebContainerReady && (
+                          <div className="flex items-center gap-1">
+                            {terminalOutput.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                                onClick={() => setTerminalOutput([])}
+                                title="Clear terminal"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            )}
+                            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" title="WebContainer ready" />
+                          </div>
+                        )}
+                        {isWebContainerBooting && (
+                          <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" title="Booting..." />
+                        )}
+                        {webContainerError && !isWebContainerBooting && (
+                          <div className="w-1.5 h-1.5 bg-red-500 rounded-full" title="Error" />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Console Content */}
+                {terminalTab === "console" && (
+                  <div className="px-3 py-2">
+                    {consoleLogs.length > 0 ? (
+                      <>
+                        <div className="flex items-center justify-end mb-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-[10px] text-zinc-500 hover:text-zinc-300"
+                            onClick={() => setConsoleLogs([])}
+                          >
+                            <X className="h-3 w-3 mr-1" />
+                            Clear
+                          </Button>
+                        </div>
+                        <div className="space-y-1">
+                          {consoleLogs.map((log, i) => (
+                            <div
+                              key={i}
+                              className={cn(
+                                "flex items-start gap-2 font-mono text-xs px-2 py-1 rounded",
+                                log.type === "error" && "bg-red-950/50 text-red-400",
+                                log.type === "warn" && "bg-yellow-950/50 text-yellow-400",
+                                log.type === "info" && "bg-blue-950/50 text-blue-400",
+                                log.type === "log" && "bg-zinc-900 text-zinc-300"
+                              )}
+                            >
+                              {log.type === "error" && <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />}
+                              {log.type === "warn" && <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />}
+                              {log.type === "info" && <Info className="h-3 w-3 mt-0.5 shrink-0" />}
+                              {log.type === "log" && <span className="text-zinc-500 shrink-0">&gt;</span>}
+                              <span className="break-all">{log.message}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-center py-4 text-zinc-600 text-xs">
+                        No console output yet. Use console.log() in your code.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -825,6 +1473,55 @@ export function Playground({ componentId }: PlaygroundProps) {
               {saveMutation.isPending || updateMutation.isPending
                 ? "Saving..."
                 : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Version Save Dialog */}
+      <Dialog open={isVersionSaveDialogOpen} onOpenChange={setIsVersionSaveDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save Changes to Version {component?.versions[0]?.version}</DialogTitle>
+            <DialogDescription>
+              You are modifying the latest version (v{component?.versions[0]?.version}). How would you like to save your changes?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-3">
+            <Button
+              variant="outline"
+              className="w-full justify-start h-auto py-3 px-4"
+              onClick={() => handleVersionSaveChoice(false)}
+              disabled={saveMutation.isPending}
+            >
+              <div className="flex flex-col items-start gap-1">
+                <span className="font-semibold">Create New Version</span>
+                <span className="text-xs text-muted-foreground">
+                  Save as v{(component?.versions[0]?.version ?? 0) + 1}. The current version will remain unchanged.
+                </span>
+              </div>
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start h-auto py-3 px-4"
+              onClick={() => handleVersionSaveChoice(true)}
+              disabled={saveMutation.isPending}
+            >
+              <div className="flex flex-col items-start gap-1">
+                <span className="font-semibold">Replace Current Version</span>
+                <span className="text-xs text-muted-foreground">
+                  Update v{component?.versions[0]?.version} with your changes. The old version will be removed.
+                </span>
+              </div>
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setIsVersionSaveDialogOpen(false)}
+              disabled={saveMutation.isPending}
+            >
+              Cancel
             </Button>
           </DialogFooter>
         </DialogContent>

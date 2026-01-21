@@ -36,6 +36,11 @@ export function CodeEditor({
 
   const handleEditorMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
+    
+    // Store Monaco globally so monaco-types utility can access it
+    if (typeof window !== "undefined") {
+      (window as any).monaco = monaco;
+    }
 
     // Configure TypeScript/JavaScript language service to avoid noisy \"Cannot find module\" errors
     // (Vault stores code; preview loads deps via CDN/shims, not node_modules.)
@@ -78,7 +83,7 @@ export function CodeEditor({
         noSyntaxValidation: false,
         diagnosticCodesToIgnore: [],
       });
-      
+
       // Add React types for better JSX support
       const reactTypes = `
         declare namespace React {
@@ -95,13 +100,39 @@ export function CodeEditor({
 
       const extraDts = `
         declare module "react-day-picker" { export const DayPicker: any; const _default: any; export default _default; }
-        declare module "lucide-react" { const x: any; export = x; }
+        declare module "lucide-react" { 
+          const x: any; 
+          export = x; 
+          export default x;
+          // Common named exports for lucide-react
+          export const Calendar: any;
+          export const Button: any;
+          export const Input: any;
+          export const Check: any;
+          export const X: any;
+          export const Plus: any;
+          export const Minus: any;
+          export const Edit: any;
+          export const Trash: any;
+          export const Save: any;
+          export const Search: any;
+          export const ArrowLeft: any;
+          export const ArrowRight: any;
+          export const ChevronUp: any;
+          export const ChevronDown: any;
+          export const MoreVertical: any;
+          export const Info: any;
+          export const AlertCircle: any;
+          export const AlertTriangle: any;
+        }
         declare module "styled-components" { const x: any; export default x; }
-        declare module "framer-motion" { const x: any; export = x; }
+        declare module "framer-motion" { const x: any; export = x; export default x; }
         declare module "./utils" { export function cn(...args: any[]): string; }
         declare module "../utils" { export function cn(...args: any[]): string; }
         declare module "./button" { export const buttonVariants: any; export const Button: any; }
+        declare module "./button" { export const buttonVariants: any; export const Button: any; }
         declare module "../button" { export const buttonVariants: any; export const Button: any; }
+        declare module "date-fns" { const x: any; export = x; export default x; }
       `;
       ts.typescriptDefaults.addExtraLib(
         extraDts,
@@ -130,14 +161,14 @@ export function CodeEditor({
         strings: false,
       },
     });
-    
+
     // Add helpful error markers for common issues
     const model = editor.getModel();
     if (model) {
       const checkCommonErrors = () => {
         const text = model.getValue();
         const markers: editor.IMarkerData[] = [];
-        
+
         // Check for missing = in arrow functions (common syntax error)
         const lines = text.split('\n');
         for (let i = 0; i < lines.length; i++) {
@@ -157,21 +188,21 @@ export function CodeEditor({
             });
           }
         }
-        
+
         if (markers.length > 0) {
           monaco.editor.setModelMarkers(model, 'common-errors', markers);
         } else {
           monaco.editor.setModelMarkers(model, 'common-errors', []);
         }
       };
-      
+
       // Check on content change (debounced)
       let timeoutId: NodeJS.Timeout;
       model.onDidChangeContent(() => {
         clearTimeout(timeoutId);
         timeoutId = setTimeout(checkCommonErrors, 300);
       });
-      
+
       // Initial check
       setTimeout(checkCommonErrors, 100);
     }

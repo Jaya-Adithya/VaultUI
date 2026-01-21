@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { FolderOpen, ChevronDown, Plus, Filter, Sparkles } from "lucide-react";
+import { FolderOpen, ChevronDown, Plus, Filter, Sparkles, Sun, Moon } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -13,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CreateCollectionDialog } from "@/components/collections/create-collection-dialog";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { useRouter } from "next/navigation";
@@ -77,7 +79,7 @@ function CollectionTreeItem({
               e.stopPropagation();
               setIsExpanded(!isExpanded);
             }}
-            className="p-0.5 hover:bg-muted rounded"
+            className="p-0.5 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
           >
             <ChevronDown
               className={cn(
@@ -137,14 +139,15 @@ export function Sidebar({
   onPlaygroundClick,
 }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const router = useRouter();
   const { data: collections, isLoading } = trpc.collection.list.useQuery();
   const { data: allComponents } = trpc.component.list.useQuery({});
-  
+
   // Generate next unique "Untitled" name
   const getNextUntitledName = useCallback(() => {
     if (!allComponents) return "Untitled 1";
-    
+
     // Find all existing "Untitled" or "Untitled X" titles
     const untitledPattern = /^Untitled(?: (\d+))?$/;
     const existingNumbers = allComponents
@@ -158,7 +161,7 @@ export function Sidebar({
       })
       .filter((n): n is number => n !== null)
       .sort((a, b) => b - a); // Sort descending
-    
+
     // Find the next available number
     let nextNumber = 1;
     if (existingNumbers.length > 0) {
@@ -171,7 +174,7 @@ export function Sidebar({
         }
       }
     }
-    
+
     return nextNumber === 1 ? "Untitled 1" : `Untitled ${nextNumber}`;
   }, [allComponents]);
 
@@ -277,7 +280,12 @@ export function Sidebar({
                   <FolderOpen className="h-4 w-4" />
                   Collections
                 </div>
-                <Button variant="ghost" size="icon" className="h-6 w-6">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => setIsCreateDialogOpen(true)}
+                >
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
@@ -323,10 +331,10 @@ export function Sidebar({
 
       {/* Fixed bottom section for Playground */}
       <div className="p-4 border-t border-border/40 bg-muted/50 shrink-0">
-        <Button 
-          variant="default" 
+        <Button
+          variant="default"
           className={cn(
-            "w-full gap-2", 
+            "w-full gap-2",
             isCollapsed ? "px-0 justify-center" : "justify-start"
           )}
           onClick={() => {
@@ -354,6 +362,12 @@ export function Sidebar({
           {!isCollapsed && <span>Scratchpad</span>}
         </Button>
       </div>
+
+      <CreateCollectionDialog
+        open={isCreateDialogOpen}
+        onOpenChange={setIsCreateDialogOpen}
+        collections={collections?.map((c) => ({ id: c.id, name: c.name })) ?? []}
+      />
     </aside>
   );
 }

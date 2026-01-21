@@ -68,6 +68,12 @@ export const dependencyRegistry: Record<string, DependencyConfig> = {
     global: "FramerMotion",
     browserSafe: true,
   },
+  "date-fns": {
+    type: "cdn",
+    cdn: "https://esm.sh/date-fns@2?deps=react@18,react-dom@18",
+    global: "dateFns",
+    browserSafe: true,
+  },
 
   // Common local imports - shims
   "./utils": {
