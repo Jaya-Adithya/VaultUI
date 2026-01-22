@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { FolderOpen, ChevronDown, Plus, Filter, Sparkles, Sun, Moon } from "lucide-react";
+import { FolderOpen, ChevronDown, Plus, Filter, Sparkles, Sun, Moon, Grid3x3 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -329,38 +329,63 @@ export function Sidebar({
         </div>
       </ScrollArea>
 
-      {/* Fixed bottom section for Playground */}
-      <div className="p-4 border-t border-border/40 bg-muted/50 shrink-0">
-        <Button
-          variant="default"
-          className={cn(
-            "w-full gap-2",
-            isCollapsed ? "px-0 justify-center" : "justify-start"
-          )}
-          onClick={() => {
-            // Create a scratchpad component with default empty file
-            // This directly opens the playground without showing the modal
-            const untitledName = getNextUntitledName();
-            createScratchpadMutation.mutate({
-              title: untitledName,
-              framework: "react",
-              language: "tsx",
-              isRenderable: true,
-              files: [
-                {
-                  filename: "App.tsx",
-                  language: "tsx",
-                  code: "",
-                  order: 0,
-                },
-              ],
-            });
-          }}
-          disabled={createScratchpadMutation.isPending}
-        >
-          <Sparkles className="h-4 w-4" />
-          {!isCollapsed && <span>Scratchpad</span>}
-        </Button>
+      {/* Fixed bottom section for Tools and Playground */}
+      <div className="border-t border-border/40 bg-muted/50 shrink-0">
+        {/* Tools Section */}
+        <div className="p-4 border-b border-border/40">
+          <div className="space-y-2">
+            {!isCollapsed && (
+              <div className="text-xs font-medium text-muted-foreground px-2">
+                Tools
+              </div>
+            )}
+            <Button
+              variant="ghost"
+              className={cn(
+                "w-full gap-2 cursor-pointer",
+                isCollapsed ? "px-0 justify-center" : "justify-start"
+              )}
+              onClick={() => router.push("/tools/css-grid-generator")}
+            >
+              <Grid3x3 className="h-4 w-4" />
+              {!isCollapsed && <span>CSS Grid Generator</span>}
+            </Button>
+          </div>
+        </div>
+
+        {/* Scratchpad Section */}
+        <div className="p-4">
+          <Button
+            variant="default"
+            className={cn(
+              "w-full gap-2",
+              isCollapsed ? "px-0 justify-center" : "justify-start"
+            )}
+            onClick={() => {
+              // Create a scratchpad component with default empty file
+              // This directly opens the playground without showing the modal
+              const untitledName = getNextUntitledName();
+              createScratchpadMutation.mutate({
+                title: untitledName,
+                framework: "react",
+                language: "tsx",
+                isRenderable: true,
+                files: [
+                  {
+                    filename: "App.tsx",
+                    language: "tsx",
+                    code: "",
+                    order: 0,
+                  },
+                ],
+              });
+            }}
+            disabled={createScratchpadMutation.isPending}
+          >
+            <Sparkles className="h-4 w-4" />
+            {!isCollapsed && <span>Scratchpad</span>}
+          </Button>
+        </div>
       </div>
 
       <CreateCollectionDialog
