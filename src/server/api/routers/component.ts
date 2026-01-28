@@ -171,7 +171,7 @@ export const componentRouter = createTRPCRouter({
         title: z.string().min(1).optional(),
         description: z.string().optional(),
         status: z.string().optional(),
-        coverImage: z.string().optional(),
+        coverImage: z.string().nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

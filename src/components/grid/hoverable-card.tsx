@@ -12,6 +12,7 @@ import {
   FolderPlus,
   FileEdit,
   Image as ImageIcon,
+  X,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -94,6 +95,8 @@ export function HoverableCard({
   const [renameInput, setRenameInput] = useState(title);
   const [coverImageInput, setCoverImageInput] = useState(coverImage || "");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isRemovingCover, setIsRemovingCover] = useState(false);
+  const [isSavingCover, setIsSavingCover] = useState(false);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -139,7 +142,14 @@ export function HoverableCard({
     onSuccess: () => {
       utils.component.list.invalidate();
       setIsCoverDialogOpen(false);
+      setIsMenuOpen(false);
+      setIsRemovingCover(false);
+      setIsSavingCover(false);
     },
+    onError: () => {
+      setIsRemovingCover(false);
+      setIsSavingCover(false);
+    }
   });
 
   const handleDuplicate = useCallback(() => {
@@ -154,13 +164,17 @@ export function HoverableCard({
       framework: component.framework,
       language: component.language,
       isRenderable: component.isRenderable,
-      files: latestVersion.files.map((file) => ({
+      files: latestVersion.files.map(
+        (file: { filename: string; language: string; code: string; order: number }) => ({
         filename: file.filename,
         language: file.language,
         code: file.code,
         order: file.order,
-      })),
-      collectionIds: component.collections.map((c) => c.collectionId),
+      })
+      ),
+      collectionIds: component.collections.map(
+        (c: { collectionId: string }) => c.collectionId
+      ),
     });
   }, [component, duplicateMutation]);
 
@@ -196,11 +210,20 @@ export function HoverableCard({
   }, [id, renameInput, renameMutation]);
 
   const handleUpdateCover = useCallback(() => {
+    setIsSavingCover(true);
     updateCoverMutation.mutate({
       id,
       coverImage: coverImageInput.trim() || undefined,
     });
   }, [id, coverImageInput, updateCoverMutation]);
+
+  const handleRemoveCover = useCallback(() => {
+    setIsRemovingCover(true);
+    updateCoverMutation.mutate({
+      id,
+      coverImage: null,
+    });
+  }, [id, updateCoverMutation]);
 
   // Update rename input when dialog opens
   useEffect(() => {
@@ -216,8 +239,10 @@ export function HoverableCard({
   }, [isCoverDialogOpen, coverImage]);
 
   const availableCollections = collections.filter(
-    (collection) =>
-      !component?.collections.some((c) => c.collectionId === collection.id)
+    (collection: { id: string }) =>
+      !component?.collections.some(
+        (c: { collectionId: string }) => c.collectionId === collection.id
+      )
   );
 
   const handleMouseEnter = useCallback(() => {
@@ -335,7 +360,7 @@ export function HoverableCard({
                             No available collections
                           </div>
                         ) : (
-                          availableCollections.map((collection) => {
+                        availableCollections.map((collection: { id: string; name: string }) => {
                             const isAdding =
                               addToCollectionMutation.isPending &&
                               addToCollectionMutation.variables?.collectionId ===
@@ -422,6 +447,30 @@ export function HoverableCard({
                       <span>{coverImage ? "Change Cover" : "Add Cover"}</span>
                     </DropdownMenuItem>
 
+                    {coverImage && (
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemoveCover();
+                        }}
+                        disabled={updateCoverMutation.isPending}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        {isRemovingCover ? (
+                          <>
+                            <span className="h-4 w-4 animate-spin">⟳</span>
+                            <span>Removing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="h-4 w-4" />
+                            <span>Remove Cover</span>
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                    )}
+
                     <DropdownMenuSeparator />
 
                     <DropdownMenuItem
@@ -440,7 +489,7 @@ export function HoverableCard({
               </div>
             </div>
 
-            <div className="p-4 space-y-2">
+            <div className="p-3 sm:p-4 space-y-2">
               <div className="flex items-start justify-between gap-2">
                 <h3 className="font-medium text-sm truncate group-hover:text-primary transition-colors">
                   {title}
@@ -462,7 +511,7 @@ export function HoverableCard({
                 >
                   {getFrameworkLabel(frameworkType)}
                 </Badge>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground truncate ml-2">
                   {formatDistanceToNow(new Date(updatedAt), { addSuffix: true })}
                 </span>
               </div>
@@ -560,21 +609,33 @@ export function HoverableCard({
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="cover-input">Image URL</Label>
-              <Input
-                id="cover-input"
-                value={coverImageInput}
-                onChange={(e) => setCoverImageInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    handleUpdateCover();
-                  }
-                  if (e.key === "Escape") {
-                    setIsCoverDialogOpen(false);
-                  }
-                }}
-                placeholder="https://example.com/image.png"
-                autoFocus
-              />
+              <div className="relative">
+                <Input
+                  id="cover-input"
+                  value={coverImageInput}
+                  onChange={(e) => setCoverImageInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleUpdateCover();
+                    }
+                    if (e.key === "Escape") {
+                      setIsCoverDialogOpen(false);
+                    }
+                  }}
+                  placeholder="https://example.com/image.png"
+                  autoFocus
+                  className="pr-8"
+                />
+                {coverImageInput && (
+                  <button
+                    type="button"
+                    onClick={() => setCoverImageInput("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </div>
             {updateCoverMutation.error && (
               <p className="text-sm text-destructive">
@@ -582,20 +643,50 @@ export function HoverableCard({
               </p>
             )}
           </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsCoverDialogOpen(false)}
-              disabled={updateCoverMutation.isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleUpdateCover}
-              disabled={updateCoverMutation.isPending}
-            >
-              {updateCoverMutation.isPending ? "Saving..." : "Save"}
-            </Button>
+          <DialogFooter className="flex-col sm:flex-row gap-2 mt-2">
+            {coverImage && (
+              <Button
+                variant="ghost"
+                type="button"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10 mr-auto flex items-center gap-2"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleRemoveCover();
+                }}
+                disabled={updateCoverMutation.isPending}
+              >
+                {isRemovingCover ? (
+                  <span className="h-4 w-4 animate-spin">⟳</span>
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                Remove Cover
+              </Button>
+            )}
+            <div className="flex gap-2 ml-auto">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => setIsCoverDialogOpen(false)}
+                disabled={updateCoverMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleUpdateCover}
+                disabled={updateCoverMutation.isPending}
+              >
+                {isSavingCover ? (
+                  <>
+                    <span className="h-4 w-4 mr-2 animate-spin">⟳</span>
+                    Saving...
+                  </>
+                ) : (
+                  "Save"
+                )}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

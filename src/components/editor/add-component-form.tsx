@@ -496,6 +496,34 @@ export function AddComponentForm({
 
   const canRender = isRenderable(framework) || files.some((f) => f.language === "html");
   const hasCode = files.some((f) => f.code.trim());
+  const hasPasteCode = !!pasteAreaCode.trim();
+  const hasTitle = !!title.trim();
+  const hasAnyCode = hasCode || hasPasteCode;
+  
+  // Compute button disabled state explicitly
+  const isButtonDisabled = !hasTitle || !hasAnyCode || createMutation.isPending;
+  
+  // Debug: Log validation state
+  useEffect(() => {
+    if (open) {
+      console.log("[AddComponentForm] Validation state:", {
+        hasTitle,
+        title: title.trim(),
+        filesCount: files.length,
+        hasCode,
+        pasteAreaCodeLength: pasteAreaCode.trim().length,
+        hasPasteCode,
+        hasAnyCode,
+        isPending: createMutation.isPending,
+        isButtonDisabled,
+        files: files.map(f => ({ 
+          filename: f.filename, 
+          codeLength: f.code.length, 
+          hasCode: !!f.code.trim() 
+        }))
+      });
+    }
+  }, [open, hasTitle, title, hasCode, hasPasteCode, hasAnyCode, pasteAreaCode, createMutation.isPending, isButtonDisabled, files]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -531,12 +559,24 @@ export function AddComponentForm({
 
           <div className="space-y-2">
             <Label htmlFor="coverImage">Cover Image URL (optional)</Label>
-            <Input
-              id="coverImage"
-              placeholder="https://..."
-              value={coverImage}
-              onChange={(e) => setCoverImage(e.target.value)}
-            />
+            <div className="relative">
+              <Input
+                id="coverImage"
+                placeholder="https://..."
+                value={coverImage}
+                onChange={(e) => setCoverImage(e.target.value)}
+                className="pr-8"
+              />
+              {coverImage && (
+                <button
+                  type="button"
+                  onClick={() => setCoverImage("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -730,7 +770,16 @@ export function AddComponentForm({
             </Button>
             <Button
               type="submit"
-              disabled={!title.trim() || (!hasCode && !pasteAreaCode.trim()) || createMutation.isPending}
+              disabled={isButtonDisabled}
+              title={
+                !hasTitle 
+                  ? "Please enter a title" 
+                  : !hasAnyCode
+                    ? "Please add code to at least one file or paste code in the paste area"
+                    : createMutation.isPending
+                      ? "Creating component..."
+                      : "Create Component"
+              }
             >
               {createMutation.isPending ? "Creating..." : "Create Component"}
             </Button>

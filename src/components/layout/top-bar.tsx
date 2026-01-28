@@ -17,6 +17,7 @@ interface TopBarProps {
   onAddComponent: () => void;
   viewMode: "grid" | "list";
   onViewModeChange: (mode: "grid" | "list") => void;
+  onMenuClick?: () => void;
 }
 
 export function TopBar({
@@ -24,6 +25,7 @@ export function TopBar({
   onAddComponent,
   viewMode,
   onViewModeChange,
+  onMenuClick,
 }: TopBarProps) {
   const [searchValue, setSearchValue] = useState("");
 
@@ -35,22 +37,22 @@ export function TopBar({
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
-      <div className="flex h-14 items-center gap-3 px-4 sm:px-6">
+      <div className="flex h-14 items-center gap-3 px-6">
         <div className="flex items-center gap-2 shrink-0">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <span className="text-sm font-bold text-primary-foreground">V</span>
           </div>
-          <span className="font-semibold hidden sm:inline-block text-lg">Vault</span>
+          <span className="font-semibold text-lg">Vault</span>
         </div>
 
-        {/* Search Section - FIXED: Centered with proper flex layout */}
-        <div className="flex flex-1 items-center justify-center px-4">
+        {/* Search Section */}
+        <div className="flex flex-1 items-center justify-center px-4 min-w-0">
           <div className="relative w-full max-w-xl">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
             <Input
               type="search"
               placeholder="Search components..."
-              className="pl-9 h-9 bg-muted/50 border-border/50 focus-visible:ring-2 w-full"
+              className="pl-9 h-9 bg-muted/50 border-border/50 focus-visible:ring-2 w-full text-sm"
               value={searchValue}
               onChange={handleSearchChange}
             />
@@ -63,9 +65,13 @@ export function TopBar({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button onClick={onAddComponent} size="sm" className="h-9">
+                <Button 
+                  onClick={onAddComponent} 
+                  size="sm" 
+                  className="h-9 px-3"
+                >
                   <Plus className="h-4 w-4 mr-1.5" />
-                  <span className="hidden sm:inline">Add Component</span>
+                  <span>Add Component</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent>

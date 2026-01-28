@@ -115,25 +115,22 @@ export function Playground({ componentId }: PlaygroundProps) {
       if (!window.crossOriginIsolated) {
         setIsIsolationMissing(true);
         // Use console.warn with helpful message
-        // In Next.js 16 with Turbopack, headers might not work correctly in development mode
-        // This is often a development-only issue and should work in production
-        const isDev = process.env.NODE_ENV === "development" || 
-                      window.location.hostname === "localhost" || 
-                      window.location.hostname === "127.0.0.1";
-        
-        if (isDev) {
-          console.warn(
-            "[Cross-Origin Isolation] Missing cross-origin isolation. SharedArrayBuffer will not work.\n" +
-            "This may be a development mode issue with Turbopack. Headers are configured in middleware and next.config.ts.\n" +
-            "If this persists, try:\n" +
-            "  1. Restarting the dev server\n" +
-            "  2. Checking that headers are set in the Network tab\n" +
-            "  3. This should work correctly in production builds"
+        const isDev = process.env.NODE_ENV === "development" ||
+          window.location.hostname === "localhost" ||
+          window.location.hostname === "127.0.0.1";
+
+        const isHttps = window.location.protocol === "https:";
+
+        if (!isDev && !isHttps) {
+          console.error(
+            "[Cross-Origin Isolation] Missing cross-origin isolation. SharedArrayBuffer will ONLY work on localhost or via HTTPS.\n" +
+            "Please ensure you are using HTTPS for non-local connections."
           );
         } else {
-          console.error(
+          console.warn(
             "[Cross-Origin Isolation] Missing cross-origin isolation. SharedArrayBuffer will not work.\n" +
-            "Ensure COOP/COEP headers are set in next.config.ts and middleware."
+            "Headers (COOP/COEP) are configured in middleware and next.config.ts.\n" +
+            "If this persists, try restarting the dev server or clearing browser cache."
           );
         }
       } else {
@@ -175,6 +172,8 @@ export function Playground({ componentId }: PlaygroundProps) {
       // Constrain between 20% and 80%
       const constrainedWidth = Math.max(20, Math.min(80, newWidth));
       setEditorWidth(constrainedWidth);
+      document.documentElement.style.setProperty('--editor-width', `${constrainedWidth}%`);
+      document.documentElement.style.setProperty('--preview-width', `${100 - constrainedWidth}%`);
     };
 
     const handleMouseUp = () => {
@@ -193,6 +192,12 @@ export function Playground({ componentId }: PlaygroundProps) {
       document.body.style.userSelect = '';
     };
   }, [isResizing]);
+
+  // Set initial editor and preview width CSS variables
+  useEffect(() => {
+    document.documentElement.style.setProperty('--editor-width', `${editorWidth}%`);
+    document.documentElement.style.setProperty('--preview-width', `${100 - editorWidth}%`);
+  }, [editorWidth]);
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [terminalTab, setTerminalTab] = useState<"terminal" | "console">("terminal");
   const [terminalCommand, setTerminalCommand] = useState("");
@@ -1185,11 +1190,12 @@ export function Playground({ componentId }: PlaygroundProps) {
   return (
     <div className="flex flex-col h-screen">
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-background shrink-0">
-        <div className="flex items-center gap-4">
+      <header className="flex flex-row items-center justify-between gap-4 px-4 py-2 border-b border-border bg-background shrink-0">
+        <div className="flex items-center gap-4 min-w-0 flex-1">
           <Button
             variant="ghost"
             size="icon"
+            className="h-8 w-8 shrink-0"
             onClick={() => handleNavigation(() => router.push("/"))}
             title="Back to grid"
           >
@@ -1198,13 +1204,13 @@ export function Playground({ componentId }: PlaygroundProps) {
 
           {/* Isolation Warning */}
           {isIsolationMissing && (
-            <div className="flex items-center gap-2 text-amber-500 bg-amber-500/10 px-3 py-1 rounded text-xs border border-amber-500/20">
+            <div className="flex items-center gap-2 text-amber-500 bg-amber-500/10 px-3 py-1 rounded text-xs border border-amber-500/20 shrink-0">
               <AlertTriangle className="h-3 w-3" />
               <span className="font-medium">Cross-Origin Isolation Missing</span>
             </div>
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             {isEditingTitle ? (
               <Input
                 value={title}
@@ -1217,53 +1223,58 @@ export function Playground({ componentId }: PlaygroundProps) {
                     setIsEditingTitle(false);
                   }
                 }}
-                className="h-8 w-[200px]"
+                className="h-8 w-[200px] text-sm"
                 autoFocus
               />
             ) : (
               <button
                 onClick={() => setIsEditingTitle(true)}
-                className="flex items-center gap-1 text-lg font-semibold hover:text-primary transition-colors"
+                className="flex items-center gap-1 text-lg font-semibold hover:text-primary transition-colors truncate min-w-0"
               >
-                {component.title}
-                <Edit2 className="h-3 w-3 opacity-50" />
+                <span className="truncate">{component.title}</span>
+                <Edit2 className="h-3 w-3 opacity-50 shrink-0" />
               </button>
             )}
 
-            <Badge
-              variant="outline"
-              className={cn("text-xs", getFrameworkColor(framework))}
-            >
-              {getFrameworkLabel(framework)}
-            </Badge>
-
-            <Badge variant="outline" className="text-xs">
-              {files.length} file{files.length !== 1 ? "s" : ""}
-            </Badge>
-
-            {hasUnsavedChanges && (
+            <div className="flex items-center gap-2 shrink-0">
               <Badge
                 variant="outline"
-                className="text-xs text-yellow-500 border-yellow-500/20"
+                className={cn("text-xs inline-flex", getFrameworkColor(framework))}
               >
-                Unsaved
+                {getFrameworkLabel(framework)}
               </Badge>
-            )}
+
+              <Badge variant="outline" className="text-xs inline-flex">
+                {files.length} file{files.length !== 1 ? "s" : ""}
+              </Badge>
+
+              {hasUnsavedChanges && (
+                <Badge
+                  variant="outline"
+                  className="text-xs text-yellow-500 border-yellow-500/20 shrink-0"
+                >
+                  <span>Unsaved</span>
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <VersionHistory
-            versions={component.versions}
-            currentVersionId={currentVersionId ?? ""}
-            onVersionChange={handleVersionChange}
-            componentId={componentId}
-          />
+        <div className="flex items-center gap-2 w-auto justify-end">
+          <div className="block">
+            <VersionHistory
+              versions={component.versions}
+              currentVersionId={currentVersionId ?? ""}
+              onVersionChange={handleVersionChange}
+              componentId={componentId}
+            />
+          </div>
 
           <div className="flex items-center gap-1">
             <Button
               variant="outline"
               size="sm"
+              className="h-8 w-auto px-3"
               onClick={handleCopy}
               title="Copy all code"
             >
@@ -1272,22 +1283,24 @@ export function Playground({ componentId }: PlaygroundProps) {
               ) : (
                 <Copy className="h-4 w-4" />
               )}
+              <span className="inline ml-1">Copy</span>
             </Button>
 
             <Button
               variant="default"
               size="sm"
+              className="h-8 px-3"
               onClick={handleSave}
               disabled={!hasUnsavedChanges || saveMutation.isPending}
               title="Save (Ctrl+S)"
             >
               <Save className="h-4 w-4 mr-1" />
-              {saveMutation.isPending ? "Saving..." : "Save"}
+              <span className="inline">{saveMutation.isPending ? "Saving..." : "Save"}</span>
             </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" className="h-8 w-8">
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -1318,7 +1331,7 @@ export function Playground({ componentId }: PlaygroundProps) {
       </header>
 
       {/* Editor + Preview Split */}
-      <div ref={resizeContainerRef} className="flex flex-1 overflow-hidden relative">
+      <div ref={resizeContainerRef} className="flex flex-row flex-1 overflow-hidden relative">
         {/* Resize Overlay - captures mouse events when resizing to prevent iframe from swallowing them */}
         {isResizing && (
           <div className="absolute inset-0 z-50 cursor-col-resize select-none" />
@@ -1326,11 +1339,14 @@ export function Playground({ componentId }: PlaygroundProps) {
 
         {/* Editor Panel */}
         <div
-          className="border-r border-border/40 flex flex-col"
-          style={{ width: `${editorWidth}%`, minWidth: 0 }}
+          className="border-r border-border/40 flex flex-col w-auto"
+          style={{ 
+            width: `var(--editor-width, 50%)`,
+            minWidth: 0 
+          }}
         >
           {/* File Tabs */}
-          <div className="flex items-center gap-1 px-2 py-1 border-b border-border/40 bg-muted/30 overflow-x-auto">
+          <div className="flex items-center gap-1 px-2 py-1 border-b border-border/40 bg-muted/30 overflow-x-auto scrollbar-thin scrollbar-thumb-muted-foreground/30">
             {files.map((file) => (
               <div
                 key={file.id}
@@ -1342,10 +1358,10 @@ export function Playground({ componentId }: PlaygroundProps) {
                 )}
                 onClick={() => setActiveFileId(file.id)}
               >
-                {file.language === "html" && <FileCode className="h-3 w-3" />}
-                {file.language === "css" && <FileText className="h-3 w-3" />}
-                {file.language === "js" && <FileCode className="h-3 w-3" />}
-                {(file.language === "tsx" || file.language === "jsx") && <FileCode className="h-3 w-3" />}
+                {file.language === "html" && <FileCode className="h-3 w-3 shrink-0" />}
+                {file.language === "css" && <FileText className="h-3 w-3 shrink-0" />}
+                {file.language === "js" && <FileCode className="h-3 w-3 shrink-0" />}
+                {(file.language === "tsx" || file.language === "jsx") && <FileCode className="h-3 w-3 shrink-0" />}
                 <span className="truncate max-w-[100px]">{file.filename}</span>
                 {files.length > 1 && (
                   <button
@@ -1354,7 +1370,7 @@ export function Playground({ componentId }: PlaygroundProps) {
                       e.stopPropagation();
                       handleRemoveFile(file.id);
                     }}
-                    className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity ml-1"
+                    className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity ml-1 shrink-0"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -1407,7 +1423,7 @@ export function Playground({ componentId }: PlaygroundProps) {
         {/* Resizer */}
         <div
           data-resizer
-          className="w-1.5 bg-border/40 hover:bg-border cursor-col-resize transition-colors group relative z-20 flex-shrink-0 select-none"
+          className="block w-1.5 bg-border/40 hover:bg-border cursor-col-resize transition-colors group relative z-20 flex-shrink-0 select-none"
           onMouseDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -1420,8 +1436,11 @@ export function Playground({ componentId }: PlaygroundProps) {
 
         {/* Preview Panel */}
         <div
-          className="flex flex-col"
-          style={{ width: `${100 - editorWidth}%`, minWidth: 0 }}
+          className="flex flex-col w-auto border-l border-border/40"
+          style={{ 
+            width: `var(--preview-width, 50%)`,
+            minWidth: 0 
+          }}
         >
           {/* Install Command - Always visible at top when present */}
           {installCommand && (

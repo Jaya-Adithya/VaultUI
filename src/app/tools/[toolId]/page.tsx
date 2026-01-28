@@ -3,6 +3,8 @@
 import { use } from "react";
 import { useRouter } from "next/navigation";
 import { CssGridGenerator } from "@/components/tools/css-grid-generator";
+import { GradientGenerator } from "@/components/tools/gradient-generator";
+import { ImageClipper } from "@/components/tools/image-clipper";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 
@@ -14,6 +16,14 @@ const TOOLS: Record<string, { component: React.ComponentType; title: string }> =
   "css-grid-generator": {
     component: CssGridGenerator,
     title: "CSS Grid Generator",
+  },
+  "gradient-generator": {
+    component: GradientGenerator,
+    title: "CSS Gradient Generator",
+  },
+  "image-clipper": {
+    component: ImageClipper,
+    title: "CSS Clip-Path Generator",
   },
 };
 
