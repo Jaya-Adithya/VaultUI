@@ -198,7 +198,7 @@ export function HoverableCard({
   const handleUpdateCover = useCallback(() => {
     updateCoverMutation.mutate({
       id,
-      coverImage: coverImageInput.trim() || null,
+      coverImage: coverImageInput.trim() || undefined,
     });
   }, [id, coverImageInput, updateCoverMutation]);
 
