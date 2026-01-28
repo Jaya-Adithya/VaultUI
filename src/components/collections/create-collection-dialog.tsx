@@ -69,6 +69,8 @@ export function CreateCollectionDialog({
         },
     });
 
+    const parentId = watch("parentId");
+
     const createMutation = trpc.collection.create.useMutation({
         onSuccess: () => {
             utils.collection.list.invalidate();
@@ -76,12 +78,15 @@ export function CreateCollectionDialog({
             reset();
             router.refresh();
         },
+        onError: (error) => {
+            console.error("Failed to create collection:", error);
+        },
     });
 
     const onSubmit = (data: z.infer<typeof formSchema>) => {
         createMutation.mutate({
             name: data.name,
-            parentId: data.parentId === "none" ? undefined : data.parentId,
+            parentId: data.parentId === "none" || !data.parentId ? undefined : data.parentId,
         });
     };
 
@@ -110,6 +115,7 @@ export function CreateCollectionDialog({
                     <div className="space-y-2">
                         <Label htmlFor="parent">Parent Collection (Optional)</Label>
                         <Select
+                            value={parentId || "none"}
                             onValueChange={(value) =>
                                 setValue("parentId", value === "none" ? undefined : value)
                             }
@@ -127,6 +133,11 @@ export function CreateCollectionDialog({
                             </SelectContent>
                         </Select>
                     </div>
+                    {createMutation.error && (
+                        <p className="text-sm text-destructive">
+                            {createMutation.error.message || "Failed to create collection. Please try again."}
+                        </p>
+                    )}
                     <DialogFooter>
                         <Button type="submit" disabled={isSubmitting || createMutation.isPending}>
                             {createMutation.isPending ? "Creating..." : "Create Collection"}

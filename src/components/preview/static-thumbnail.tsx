@@ -15,6 +15,7 @@ interface StaticThumbnailProps {
   files: FileData[];
   framework: Framework;
   className?: string;
+  coverImage?: string | null;
 }
 
 function generateHtmlDocument(files: FileData[], framework: Framework): string {
@@ -130,7 +131,8 @@ function generateHtmlDocument(files: FileData[], framework: Framework): string {
 
         function throttledUpdate() {
           if (rafId || hasScaled) return;
-          rafId = requestAnimationFrame(() => {
+          const raf = window.__nativeRaf || window.requestAnimationFrame;
+          rafId = raf(() => {
             updateScale();
             rafId = null;
           });
@@ -186,7 +188,7 @@ function generateHtmlDocument(files: FileData[], framework: Framework): string {
       htmlCodeLength: htmlCode.length,
       cssCodeLength: cssCode.length
     });
-    
+
     return `
       <!DOCTYPE html>
       <html>
@@ -209,7 +211,7 @@ function generateHtmlDocument(files: FileData[], framework: Framework): string {
   if (framework === "html") {
     const code = files[0]?.code ?? "";
     console.log('[StaticThumbnail] Generating HTML-only preview', { codeLength: code.length });
-    
+
     return `
       <!DOCTYPE html>
       <html>
@@ -251,7 +253,7 @@ function generateHtmlDocument(files: FileData[], framework: Framework): string {
     `;
   }
 
-  // React/Next.js - render actual component (static snapshot with JS execution)
+  // React/Next.js - render actual component (static snapshot with paused animations)
   if (framework === "react" || framework === "next") {
     // Generate fallback placeholder HTML
     const fallbackPlaceholder = `
@@ -267,41 +269,8 @@ function generateHtmlDocument(files: FileData[], framework: Framework): string {
       `;
 
     if (reactCode.trim()) {
-      // TEMPORARY: Use default thumbnail for React/Next components
-      // The JSX transpilation in static thumbnails has issues with attribute escaping
-      // TODO: Fix JSX transpilation or use a different approach for static previews
-      console.log('[StaticThumbnail] Using default thumbnail for React/Next component (transpilation disabled temporarily)');
-      return `
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <meta charset="UTF-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <style>${baseStyles}</style>
-            </head>
-            <body>
-              ${wrapContent(fallbackPlaceholder)}
-            </body>
-          </html>
-        `;
-      
-      // OLD CODE - Disabled temporarily due to JSX attribute escaping issues
-      /*
-      // DEBUG: Log React code detection
-      console.log('[StaticThumbnail] Processing React code', {
-        reactCodeLength: reactCode.length,
-        reactCodePreview: reactCode.substring(0, 200)
-      });
-      
-      const { mode, runtimeCode, error } = generatePreviewRuntime(reactCode);
-      
-      // DEBUG: Log runtime generation result
-      console.log('[StaticThumbnail] Runtime generation result', {
-        mode,
-        hasRuntimeCode: !!runtimeCode,
-        runtimeCodeLength: runtimeCode?.length || 0,
-        error
-      });
+      // Generate runtime code for React component rendering
+      const { mode, runtimeCode, error } = generatePreviewRuntime(reactCode, undefined, files);
 
       if (mode === "disabled" || !runtimeCode) {
         console.warn('[StaticThumbnail] Preview disabled or no runtime code', { mode, error });
@@ -320,24 +289,24 @@ function generateHtmlDocument(files: FileData[], framework: Framework): string {
           `;
       }
 
-      // OLD CODE - Disabled temporarily due to JSX attribute escaping issues
-      /*
-      // DEBUG: Log before stringifying
-      console.log('[StaticThumbnail] Stringifying runtime code', {
-        runtimeCodeType: typeof runtimeCode,
-        runtimeCodeLength: runtimeCode.length,
-        runtimeCodePreview: runtimeCode.substring(0, 300)
-      });
-      
+      // Escape runtime code for embedding in script tag
       const runtimeLiteral = JSON.stringify(runtimeCode)
         .replace(/\u2028/g, "\\u2028")
         .replace(/\u2029/g, "\\u2029")
         .replace(/<\/script/gi, "<\\/script");
-      
-      console.log('[StaticThumbnail] Runtime literal created', {
-        literalLength: runtimeLiteral.length,
-        literalPreview: runtimeLiteral.substring(0, 300)
-      });
+
+      // Add CSS to pause all animations for static preview
+      const staticPreviewStyles = `
+        ${baseStyles}
+        /* Pause all animations for static preview - allows initial render but freezes animations */
+        *, *::before, *::after {
+          animation-play-state: paused !important;
+        }
+        /* Disable transitions for static view */
+        * {
+          transition: none !important;
+        }
+      `;
 
       return `
           <!DOCTYPE html>
@@ -345,19 +314,80 @@ function generateHtmlDocument(files: FileData[], framework: Framework): string {
             <head>
               <meta charset="UTF-8">
               <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <style>${baseStyles}</style>
+              <style>${staticPreviewStyles}</style>
+              <script>
+                // Capture native RAF for internal scale script usage
+                window.__nativeRaf = window.requestAnimationFrame;
+                
+                // Override global RAF to stop animations after initial render
+                // This prevents "infinite gif" mode for JS-driven animations
+                let frameCount = 0;
+                window.requestAnimationFrame = function(cb) {
+                  // Allow just enough frames for initial render (approx 20 frames / 300ms)
+                  if (frameCount < 20) { 
+                    frameCount++;
+                    return window.__nativeRaf(cb);
+                  }
+                  return -1;
+                };
+              </script>
             </head>
             <body>
               <div id="root-wrapper">
                 <div id="root"></div>
               </div>
+              ${scaleScript}
               <script type="module">
-                // ... (runtime code execution logic) ...
+                const root = document.getElementById('root');
+                const escapeHtml = (s) =>
+                  String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+                const showError = (err, meta) => {
+                  const msg = err && (err.stack || err.message) ? (err.stack || err.message) : String(err);
+                  const where =
+                    meta && (meta.filename || meta.lineno)
+                      ? \`\\n\\n[where] \${meta.filename || ""}:\${meta.lineno || ""}:\${meta.colno || ""}\`
+                      : "";
+                  if (root) {
+                    root.innerHTML = '<div style="color:#ef4444;padding:16px;font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;white-space:pre-wrap;background:#1a1a1a;border:1px solid #ef4444;border-radius:8px;">' +
+                      '<div style="font-weight:700; margin-bottom: 8px;">Preview Error</div>' +
+                      '<pre style="margin:0; white-space:pre-wrap; overflow:auto;">' +
+                      escapeHtml(msg + where) +
+                      '</pre></div>';
+                  }
+                };
+
+                window.addEventListener('error', (e) => {
+                  showError(e.error || e.message || 'Unknown error', { filename: e.filename, lineno: e.lineno, colno: e.colno });
+                });
+                window.addEventListener('unhandledrejection', (e) => {
+                  showError(e.reason || 'Unhandled promise rejection');
+                });
+
+                // Load the generated runtime via Blob import (same pattern as HoverPreview)
+                const runtimeCode = ${runtimeLiteral};
+                const encodedCode = btoa(unescape(encodeURIComponent(runtimeCode)));
+                
+                const blob = new Blob([decodeURIComponent(escape(atob(encodedCode)))], { type: 'text/javascript' });
+                const url = URL.createObjectURL(blob);
+                try {
+                  await import(url);
+                  // Notify parent that preview is loaded
+                  if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({ type: "preview:loaded" }, "*");
+                  }
+                } catch (e) {
+                  showError(e);
+                  if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({ type: "preview:loaded" }, "*");
+                  }
+                } finally {
+                  URL.revokeObjectURL(url);
+                }
               </script>
             </body>
           </html>
         `;
-      */
     } else {
       // No React code, show placeholder
       return `
@@ -474,10 +504,31 @@ export function StaticThumbnail({
   files,
   framework,
   className,
+  coverImage,
 }: StaticThumbnailProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isFrameLoaded, setIsFrameLoaded] = useState(false);
+
+  // If cover image is provided, show it instead of the iframe preview
+  if (coverImage) {
+    return (
+      <div
+        className={cn(
+          "relative w-full aspect-[3/2] bg-muted/50 rounded-t-lg overflow-hidden group-hover:scale-105 transition-transform duration-300",
+          className
+        )}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={coverImage}
+          alt="Component Preview"
+          className="w-full h-full object-cover"
+          loading="lazy"
+        />
+      </div>
+    );
+  }
 
   const srcDoc = useMemo(
     () => generateHtmlDocument(files, framework),
@@ -514,7 +565,7 @@ export function StaticThumbnail({
   return (
     <div
       className={cn(
-        "relative w-full aspect-video bg-muted/50 rounded-t-lg overflow-hidden",
+        "relative w-full aspect-[3/2] bg-muted/50 rounded-t-lg overflow-hidden",
         className
       )}
     >

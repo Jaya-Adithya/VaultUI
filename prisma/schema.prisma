@@ -9,16 +9,18 @@ datasource db {
 }
 
 model Component {
-  id           String    @id @default(uuid())
-  title        String
-  description  String?
-  framework    String    // react | next | html | css | js | multi | other
-  language     String    // tsx | jsx | html | css | js | multi
-  status       String    @default("experiment") // experiment | ready
-  isRenderable Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
+  id                  String    @id @default(uuid())
+  title               String
+  description         String?
+  framework           String    // react | next | html | css | js | multi | other
+  language            String    // tsx | jsx | html | css | js | multi
+  status              String    @default("experiment") // experiment | ready
+  isRenderable        Boolean   @default(true)
+  packageInstallCommand String? // Optional command to install packages (e.g., npx shadcn-vue@latest add ...)
+  coverImage          String?   // Optional URL for cover image
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt          DateTime?
 
   versions    ComponentVersion[]
   collections ComponentCollection[]

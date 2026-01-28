@@ -90,8 +90,18 @@ export function useWebContainer(options: UseWebContainerOptions = {}) {
       return instance;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to boot WebContainer";
-      setError(message);
-      addOutput("stderr", `Error: ${message}`);
+
+      // Handle cryptic "Unable to create more instances" error which means WebContainer
+      // is already running or browser limit reached (usually need reload in dev)
+      if (message.includes("Unable to create more instances")) {
+        const friendlyError = "WebContainer limit reached. Please reload the page.";
+        setError(friendlyError);
+        addOutput("stderr", `Error: ${friendlyError} (Original: ${message})`);
+      } else {
+        setError(message);
+        addOutput("stderr", `Error: ${message}`);
+      }
+
       setIsBooting(false);
       bootPromise = null;
       throw err;

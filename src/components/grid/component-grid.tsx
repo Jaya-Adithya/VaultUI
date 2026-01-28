@@ -16,6 +16,7 @@ interface Component {
   framework: string;
   updatedAt: Date;
   status: string;
+  coverImage?: string | null;
   versions: {
     files: FileData[];
   }[];
@@ -37,20 +38,20 @@ export function ComponentGrid({
       <div
         className={cn(
           viewMode === "grid"
-            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
-            : "flex flex-col gap-2"
+            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+            : "flex flex-col gap-3"
         )}
       >
         {Array.from({ length: 8 }).map((_, i) => (
           <div
             key={i}
             className="bg-muted/50 rounded-lg animate-pulse"
-            style={{ aspectRatio: viewMode === "grid" ? "16/12" : "auto" }}
+            style={{ aspectRatio: viewMode === "grid" ? "3/2.8" : "auto" }}
           >
             {viewMode === "grid" ? (
-              <div className="w-full aspect-video bg-muted/30 rounded-t-lg" />
+              <div className="w-full aspect-[3/2] bg-muted/30 rounded-t-lg" />
             ) : null}
-            <div className="p-3 space-y-2">
+            <div className="p-4 space-y-2">
               <div className="h-4 bg-muted/30 rounded w-3/4" />
               <div className="h-3 bg-muted/30 rounded w-1/2" />
             </div>
@@ -80,8 +81,8 @@ export function ComponentGrid({
       <div
         className={cn(
           viewMode === "grid"
-            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
-            : "flex flex-col gap-2"
+            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+            : "flex flex-col gap-3"
         )}
       >
         {components.map((component) => (
@@ -93,6 +94,7 @@ export function ComponentGrid({
             updatedAt={component.updatedAt}
             files={component.versions[0]?.files ?? []}
             status={component.status}
+            coverImage={component.coverImage}
           />
         ))}
       </div>

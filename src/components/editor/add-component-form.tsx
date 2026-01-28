@@ -80,6 +80,8 @@ export function AddComponentForm({
   const [framework, setFramework] = useState<Framework>("html");
   const [status, setStatus] = useState<"experiment" | "ready">("experiment");
   const [pasteAreaCode, setPasteAreaCode] = useState("");
+  const [packageInstallCommand, setPackageInstallCommand] = useState("");
+  const [coverImage, setCoverImage] = useState("");
 
   const utils = trpc.useUtils();
   const createMutation = trpc.component.create.useMutation({
@@ -98,37 +100,37 @@ export function AddComponentForm({
     if (pasteAreaCode.trim() && files.length === 0) {
       console.log("[AddComponentForm] Paste area code detected, length:", pasteAreaCode.length);
       console.log("[AddComponentForm] Code preview:", pasteAreaCode.substring(0, 100));
-      
+
       // Auto-detect framework from pasted code (without filename initially)
       const detected = detectFramework(pasteAreaCode);
       console.log("[AddComponentForm] Detected framework from paste:", detected);
-      
+
       const detectedLanguage = detectLanguage(pasteAreaCode, detected);
       console.log("[AddComponentForm] Detected language:", detectedLanguage);
-      
-      const componentName = detected === "react" || detected === "next" 
-        ? extractComponentName(pasteAreaCode) 
+
+      const componentName = detected === "react" || detected === "next"
+        ? extractComponentName(pasteAreaCode)
         : null;
-      
+
       // Determine filename and language
       let filename: string;
       let language: Language;
-      
+
       if (detected === "react" || detected === "next") {
         language = detectedLanguage === "tsx" ? "tsx" : "jsx";
-        filename = componentName 
+        filename = componentName
           ? suggestFilename(componentName, language)
           : `Component.${language}`;
       } else if (detected === "vue") {
         language = "vue";
-        filename = componentName 
+        filename = componentName
           ? suggestFilename(componentName, "vue")
           : "App.vue";
       } else if (detected === "html") {
         language = "html";
         const titleMatch = pasteAreaCode.match(/<title[^>]*>([^<]+)<\/title>/i) ||
-                          pasteAreaCode.match(/<h1[^>]*>([^<]+)<\/h1>/i);
-        filename = titleMatch 
+          pasteAreaCode.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+        filename = titleMatch
           ? `${titleMatch[1].trim().replace(/\s+/g, '-').toLowerCase()}.html`
           : "index.html";
       } else if (detected === "css") {
@@ -143,9 +145,9 @@ export function AddComponentForm({
         filename = "index.html";
         console.log("[AddComponentForm] ⚠️ Could not detect type, defaulting to HTML");
       }
-      
+
       console.log("[AddComponentForm] Creating file:", { filename, language, detected });
-      
+
       // Create the file
       const newFile: FileTab = {
         id: generateId(),
@@ -153,12 +155,12 @@ export function AddComponentForm({
         language,
         code: pasteAreaCode,
       };
-      
+
       setFiles([newFile]);
       setActiveFileId(newFile.id);
       setFramework(detected);
       setPasteAreaCode(""); // Clear paste area
-      
+
       // Auto-update title if empty
       if (componentName && !title.trim()) {
         setTitle(componentName);
@@ -170,13 +172,13 @@ export function AddComponentForm({
   // IMPORTANT: Detect per-file, not by combining all files (prevents CSS from being detected as HTML)
   useEffect(() => {
     if (files.length === 0) return;
-    
-    console.log("[AddComponentForm] Auto-detecting languages for files:", files.map(f => ({ 
-      filename: f.filename, 
+
+    console.log("[AddComponentForm] Auto-detecting languages for files:", files.map(f => ({
+      filename: f.filename,
       currentLanguage: f.language,
-      codeLength: f.code.length 
+      codeLength: f.code.length
     })));
-    
+
     // Detect framework per-file to avoid CSS being detected as HTML
     setFiles(prev => {
       const updated = prev.map(f => {
@@ -227,7 +229,7 @@ export function AddComponentForm({
           if (f.language !== "vue" || currentExt !== "vue" || isDefaultFilename) {
             newLanguage = "vue";
             const nameMatch = f.code.match(/<script[^>]*>[\s\S]*?name\s*[:=]\s*['"]([^'"]+)['"]/i) ||
-                              f.code.match(/export\s+default\s+{\s*name\s*:\s*['"]([^'"]+)['"]/i);
+              f.code.match(/export\s+default\s+{\s*name\s*:\s*['"]([^'"]+)['"]/i);
             if (nameMatch) {
               newFilename = suggestFilename(nameMatch[1], "vue");
             } else if (isDefaultFilename || currentExt !== "vue") {
@@ -239,7 +241,7 @@ export function AddComponentForm({
           if (f.language !== "html" || currentExt !== "html" || isDefaultFilename) {
             newLanguage = "html";
             const titleMatch = f.code.match(/<title[^>]*>([^<]+)<\/title>/i) ||
-                              f.code.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+              f.code.match(/<h1[^>]*>([^<]+)<\/h1>/i);
             if (titleMatch) {
               newFilename = `${titleMatch[1].trim().replace(/\s+/g, '-').toLowerCase()}.html`;
             } else if (isDefaultFilename || currentExt !== "html") {
@@ -264,7 +266,7 @@ export function AddComponentForm({
               }
             }
           }
-          
+
           // CRITICAL: Ensure CSS files are detected as CSS
           if (f.language !== "css" || currentExt !== "css" || suggestedCssFilename) {
             console.log(`[AddComponentForm] Updating ${f.filename} to CSS (detected: ${fileDetected})`);
@@ -295,7 +297,7 @@ export function AddComponentForm({
       });
 
       // Only return new array if something actually changed
-      const hasChanges = updated.some((f, i) => 
+      const hasChanges = updated.some((f, i) =>
         f.filename !== prev[i]?.filename || f.language !== prev[i]?.language
       );
 
@@ -306,7 +308,7 @@ export function AddComponentForm({
     const allCode = files.map((f) => f.code).join("\n");
     if (allCode.trim()) {
       const uniqueLanguages = new Set(files.filter(f => f.code.trim()).map((f) => f.language));
-      
+
       // If we have multiple file types, determine the primary framework
       if (uniqueLanguages.size > 1) {
         if (uniqueLanguages.has("html") || uniqueLanguages.has("css") || uniqueLanguages.has("js")) {
@@ -342,13 +344,13 @@ export function AddComponentForm({
         componentName = extractComponentName(reactFile.code);
       } else if (vueFile) {
         const nameMatch = vueFile.code.match(/<script[^>]*>[\s\S]*?name\s*[:=]\s*['"]([^'"]+)['"]/i) ||
-                          vueFile.code.match(/export\s+default\s+{\s*name\s*:\s*['"]([^'"]+)['"]/i);
+          vueFile.code.match(/export\s+default\s+{\s*name\s*:\s*['"]([^'"]+)['"]/i);
         if (nameMatch) {
           componentName = nameMatch[1];
         }
       } else if (htmlFile) {
         const titleMatch = htmlFile.code.match(/<title[^>]*>([^<]+)<\/title>/i) ||
-                           htmlFile.code.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+          htmlFile.code.match(/<h1[^>]*>([^<]+)<\/h1>/i);
         componentName = titleMatch ? titleMatch[1].trim() : null;
       }
 
@@ -360,6 +362,8 @@ export function AddComponentForm({
   }, [files.map(f => `${f.id}:${f.filename}:${f.code.length}`).join("|"), title]);
 
   const resetForm = () => {
+    setPackageInstallCommand("");
+    setCoverImage("");
     setTitle("");
     setDescription("");
     setFiles([]);
@@ -424,21 +428,21 @@ export function AddComponentForm({
     if (pasteAreaCode.trim() && files.length === 0) {
       const detected = detectFramework(pasteAreaCode);
       const detectedLanguage = detectLanguage(pasteAreaCode, detected);
-      const componentName = detected === "react" || detected === "next" 
-        ? extractComponentName(pasteAreaCode) 
+      const componentName = detected === "react" || detected === "next"
+        ? extractComponentName(pasteAreaCode)
         : null;
-      
+
       let filename: string;
       let language: Language;
-      
+
       if (detected === "react" || detected === "next") {
         language = detectedLanguage === "tsx" ? "tsx" : "jsx";
-        filename = componentName 
+        filename = componentName
           ? suggestFilename(componentName, language)
           : `Component.${language}`;
       } else if (detected === "vue") {
         language = "vue";
-        filename = componentName 
+        filename = componentName
           ? suggestFilename(componentName, "vue")
           : "App.vue";
       } else if (detected === "html") {
@@ -454,7 +458,7 @@ export function AddComponentForm({
         language = "html";
         filename = "index.html";
       }
-      
+
       filesToSubmit = [{
         id: generateId(),
         filename,
@@ -485,6 +489,8 @@ export function AddComponentForm({
           order: index,
         })),
       isRenderable: isRenderable(detectedFramework) || uniqueLanguages.has("html"),
+      packageInstallCommand: packageInstallCommand.trim() || undefined,
+      coverImage: coverImage.trim() || undefined,
     });
   };
 
@@ -523,6 +529,29 @@ export function AddComponentForm({
             />
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="coverImage">Cover Image URL (optional)</Label>
+            <Input
+              id="coverImage"
+              placeholder="https://..."
+              value={coverImage}
+              onChange={(e) => setCoverImage(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="packageInstall">Package Installation Command (optional)</Label>
+            <Input
+              id="packageInstall"
+              placeholder='e.g., npx shadcn-vue@latest add "https://registry.inspira-ui.com/animate-grid.json"'
+              value={packageInstallCommand}
+              onChange={(e) => setPackageInstallCommand(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Command to install required packages for this component (e.g., shadcn-vue, npm, pnpm install commands)
+            </p>
+          </div>
+
           {/* File Tabs */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -556,63 +585,63 @@ export function AddComponentForm({
 
             {/* Tab Bar - Only show if files exist */}
             {files.length > 0 && (
-            <div className="flex items-center gap-1 border-b border-border pb-1 overflow-x-auto">
-              {files.map((file) => (
-                <div
-                  key={file.id}
-                  className={cn(
-                    "group flex items-center gap-1 px-3 py-1.5 rounded-t-md cursor-pointer transition-colors text-sm",
-                    activeFileId === file.id
-                      ? "bg-muted text-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                  )}
-                  onClick={() => setActiveFileId(file.id)}
-                >
-                  <span className="truncate max-w-[120px]">{file.filename}</span>
-                  {files.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRemoveFile(file.id);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity ml-1"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
-              ))}
-
-              {/* Add File Button */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 shrink-0"
+              <div className="flex items-center gap-1 border-b border-border pb-1 overflow-x-auto">
+                {files.map((file) => (
+                  <div
+                    key={file.id}
+                    className={cn(
+                      "group flex items-center gap-1 px-3 py-1.5 rounded-t-md cursor-pointer transition-colors text-sm",
+                      activeFileId === file.id
+                        ? "bg-muted text-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    )}
+                    onClick={() => setActiveFileId(file.id)}
                   >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {FILE_TEMPLATES.map((template) => (
-                    <DropdownMenuItem
-                      key={template.filename}
-                      onClick={() => handleAddFile(template)}
-                      className="flex items-center gap-2"
+                    <span className="truncate max-w-[120px]">{file.filename}</span>
+                    {files.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveFile(file.id);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity ml-1"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {/* Add File Button */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
                     >
-                      {template.icon}
-                      <span>{template.label}</span>
-                      <span className="text-xs text-muted-foreground ml-auto">
-                        {template.filename}
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {FILE_TEMPLATES.map((template) => (
+                      <DropdownMenuItem
+                        key={template.filename}
+                        onClick={() => handleAddFile(template)}
+                        className="flex items-center gap-2"
+                      >
+                        {template.icon}
+                        <span>{template.label}</span>
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          {template.filename}
+                        </span>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             )}
 
             {/* Paste Area (when no files) or Active File Editor */}

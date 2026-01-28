@@ -20,56 +20,65 @@ export const componentRouter = createTRPCRouter({
         files: z.array(fileSchema).min(1), // At least one file required
         isRenderable: z.boolean(),
         collectionIds: z.array(z.string()).optional(),
+        packageInstallCommand: z.string().optional(),
+        coverImage: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const component = await ctx.db.component.create({
-        data: {
-          title: input.title,
-          description: input.description,
-          framework: input.framework,
-          language: input.language,
-          isRenderable: input.isRenderable,
-          versions: {
-            create: {
-              version: 1,
-              files: {
-                create: input.files.map((file, index) => ({
-                  filename: file.filename,
-                  language: file.language,
-                  code: file.code,
-                  order: file.order ?? index,
-                })),
+      try {
+        const component = await ctx.db.component.create({
+          data: {
+            title: input.title,
+            description: input.description,
+            framework: input.framework,
+            language: input.language,
+            isRenderable: input.isRenderable,
+            packageInstallCommand: input.packageInstallCommand,
+            coverImage: input.coverImage,
+            versions: {
+              create: {
+                version: 1,
+                files: {
+                  create: input.files.map((file, index) => ({
+                    filename: file.filename,
+                    language: file.language,
+                    code: file.code,
+                    order: file.order ?? index,
+                  })),
+                },
               },
             },
-          },
-          ...(input.collectionIds && input.collectionIds.length > 0
-            ? {
+            ...(input.collectionIds && input.collectionIds.length > 0
+              ? {
                 collections: {
                   create: input.collectionIds.map((collectionId) => ({
                     collectionId,
                   })),
                 },
               }
-            : {}),
-        },
-        include: {
-          versions: {
-            include: {
-              files: {
-                orderBy: { order: "asc" },
+              : {}),
+          } as any,
+          include: {
+            versions: {
+              include: {
+                files: {
+                  orderBy: { order: "asc" },
+                },
+              },
+            },
+            collections: {
+              include: {
+                collection: true,
               },
             },
           },
-          collections: {
-            include: {
-              collection: true,
-            },
-          },
-        },
-      });
+        });
 
-      return component;
+        return component;
+      } catch (error) {
+        console.error("Error creating component:", error);
+        throw error;
+      }
     }),
 
   list: publicProcedure
@@ -89,25 +98,25 @@ export const componentRouter = createTRPCRouter({
           deletedAt: null,
           ...(input?.search
             ? {
-                OR: [
-                  { title: { contains: input.search, mode: "insensitive" } },
-                  {
-                    description: {
-                      contains: input.search,
-                      mode: "insensitive",
-                    },
+              OR: [
+                { title: { contains: input.search, mode: "insensitive" } },
+                {
+                  description: {
+                    contains: input.search,
+                    mode: "insensitive",
                   },
-                ],
-              }
+                },
+              ],
+            }
             : {}),
           ...(input?.framework ? { framework: input.framework } : {}),
           ...(input?.status ? { status: input.status } : {}),
           ...(input?.collectionId
             ? {
-                collections: {
-                  some: { collectionId: input.collectionId },
-                },
-              }
+              collections: {
+                some: { collectionId: input.collectionId },
+              },
+            }
             : {}),
         },
         include: {
@@ -162,21 +171,28 @@ export const componentRouter = createTRPCRouter({
         title: z.string().min(1).optional(),
         description: z.string().optional(),
         status: z.string().optional(),
+        coverImage: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const component = await ctx.db.component.update({
-        where: { id: input.id },
-        data: {
-          ...(input.title ? { title: input.title } : {}),
-          ...(input.description !== undefined
-            ? { description: input.description }
-            : {}),
-          ...(input.status ? { status: input.status } : {}),
-        },
-      });
+      try {
+        const component = await ctx.db.component.update({
+          where: { id: input.id },
+          data: {
+            ...(input.title ? { title: input.title } : {}),
+            ...(input.description !== undefined
+              ? { description: input.description }
+              : {}),
+            ...(input.status ? { status: input.status } : {}),
+            ...(input.coverImage !== undefined ? { coverImage: input.coverImage } : {}),
+          } as any,
+        });
 
-      return component;
+        return component;
+      } catch (error) {
+        console.error("Error updating component:", error);
+        throw error;
+      }
     }),
 
   softDelete: publicProcedure

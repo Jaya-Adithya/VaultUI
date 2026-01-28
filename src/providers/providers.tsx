@@ -6,6 +6,7 @@ import { useState } from "react";
 import superjson from "superjson";
 import { trpc } from "@/lib/trpc";
 import { ThemeProvider } from "@/components/theme-provider";
+import { BackgroundWrapper } from "@/components/background/background-wrapper";
 
 function getBaseUrl() {
   if (typeof window !== "undefined") return "";
@@ -44,9 +45,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
           attribute="class"
           defaultTheme="dark"
           enableSystem
-          disableTransitionOnChange
         >
-          {children}
+          <BackgroundWrapper>{children}</BackgroundWrapper>
         </ThemeProvider>
       </QueryClientProvider>
     </trpc.Provider>

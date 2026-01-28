@@ -25,6 +25,7 @@ interface ComponentCardProps {
   updatedAt: Date;
   files: FileData[];
   status: string;
+  coverImage?: string | null;
 }
 
 export function ComponentCard({
@@ -34,15 +35,16 @@ export function ComponentCard({
   updatedAt,
   files,
   status,
+  coverImage,
 }: ComponentCardProps) {
   const frameworkType = framework as Framework;
 
   return (
     <Link href={`/component/${id}`}>
       <Card className="group overflow-hidden hover:border-primary/50 transition-all duration-200 cursor-pointer">
-        <StaticThumbnail files={files} framework={frameworkType} />
+        <StaticThumbnail files={files} framework={frameworkType} coverImage={coverImage} />
 
-        <div className="p-3 space-y-2">
+        <div className="p-4 space-y-2">
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-medium text-sm truncate group-hover:text-primary transition-colors">
               {title}
