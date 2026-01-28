@@ -81,7 +81,8 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
-.dark {
+.dark,
+.veil {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -115,11 +116,61 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+.veil {
+  --background: oklch(0.145 0 0 / 70%);
+  --sidebar: oklch(0.205 0 0 / 10%);
+}
+
+.veil [data-slot="card"] {
+  background-color: oklch(0.205 0 0 / 40%) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-color: oklch(1 0 0 / 20%);
+}
+
+.veil aside {
+  background-color: oklch(0.205 0 0 / 20%) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.veil header {
+  background-color: oklch(0.145 0 0 / 40%) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* Smooth theme transitions - optimized for performance */
+  html {
+    color-scheme: light dark;
+  }
+
+  /* Apply fast transitions to all elements for smooth theme switching */
+  *,
+  *::before,
+  *::after {
+    transition-property: background-color, color, border-color, fill, stroke;
+    transition-timing-function: ease-in-out;
+    transition-duration: 100ms;
+  }
+
+  /* Exclude elements that shouldn't transition (performance optimization) */
+  svg[class*="animate"],
+  [class*="animate"],
+  img,
+  video,
+  canvas,
+  iframe,
+  [data-no-transition] {
+    transition: none !important;
   }
 }

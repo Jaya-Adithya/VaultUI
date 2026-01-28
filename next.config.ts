@@ -23,7 +23,21 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Cross-Origin-Embedder-Policy",
-            value: "require-corp",
+            value: "credentialless",
+          },
+          {
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin",
+          },
+        ],
+      },
+      {
+        // Tools that might use WebContainers or need isolation
+        source: "/tools/:path*",
+        headers: [
+          {
+            key: "Cross-Origin-Embedder-Policy",
+            value: "credentialless",
           },
           {
             key: "Cross-Origin-Opener-Policy",

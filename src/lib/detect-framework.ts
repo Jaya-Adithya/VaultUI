@@ -12,17 +12,17 @@ export type Language = "tsx" | "jsx" | "ts" | "vue" | "html" | "css" | "js";
 
 export function detectFramework(code: string, filename?: string): Framework {
   // DEBUG: Log detection attempt
-  console.log("[detectFramework] Detecting framework", { 
-    codeLength: code.length, 
+  console.log("[detectFramework] Detecting framework", {
+    codeLength: code.length,
     filename,
-    codePreview: code.substring(0, 100) 
+    codePreview: code.substring(0, 100)
   });
 
   // Check filename extension FIRST (most reliable)
   if (filename) {
     const ext = filename.split('.').pop()?.toLowerCase();
     console.log("[detectFramework] Filename extension:", ext);
-    
+
     if (ext === "css") {
       console.log("[detectFramework] Detected CSS from filename");
       return "css";
@@ -88,7 +88,7 @@ export function detectFramework(code: string, filename?: string): Framework {
     console.log("[detectFramework] ✅ Detected CSS (@rules)");
     return "css";
   }
-  
+
   // Priority 2: CSS selector patterns with properties
   // Match: .class { property: value; } or #id { property: value; } or element { property: value; }
   const cssSelectorPattern = /([.#]?[\w-]+\s*\{[\s\S]*?:\s*[^;{}]+;[\s\S]*?\})/;
@@ -96,12 +96,12 @@ export function detectFramework(code: string, filename?: string): Framework {
   const hasCssProperties = /(?:display|margin|padding|color|background|border|width|height|position|flex|grid|transform|animation|transition)\s*:/i.test(code);
   const hasNoJsKeywords = !/(?:import|export|function|const|let|var|class|interface|type|return|if|else|for|while)\s+/.test(code);
   const hasNoHtmlTags = !/<\/?[a-z][\s>]/.test(code);
-  
+
   if (hasCssSelectors && hasCssProperties && hasNoJsKeywords && hasNoHtmlTags) {
     console.log("[detectFramework] ✅ Detected CSS (selector + properties pattern)");
     return "css";
   }
-  
+
   // Priority 3: CSS property patterns (more lenient, but still check for JS/HTML exclusion)
   if (hasCssProperties && hasNoJsKeywords && hasNoHtmlTags && code.includes("{") && code.includes("}")) {
     console.log("[detectFramework] ✅ Detected CSS (properties pattern)");
@@ -116,6 +116,12 @@ export function detectFramework(code: string, filename?: string): Framework {
   if (/<(div|span|p|h[1-6]|a|button|input|form|table|ul|ol|li|section|article|header|footer|main|nav)/i.test(code) && !code.includes("import")) {
     console.log("[detectFramework] Detected HTML (tags)");
     return "html";
+  }
+
+  // Check for Three.js (treat as JS)
+  if (/import\s+.*from\s+['"]three['"]/.test(code)) {
+    console.log("[detectFramework] Detected Three.js (import three)");
+    return "js";
   }
 
   // Check for JavaScript

@@ -64,7 +64,7 @@ export function CssGridGenerator() {
   const getNextAvailableNumber = useCallback((items: GridItem[]): number => {
     const numbers = items.map(item => parseInt(item.content) || 0).filter(n => n > 0);
     if (numbers.length === 0) return 1;
-    
+
     const sorted = [...new Set(numbers)].sort((a, b) => a - b);
     for (let i = 1; i <= sorted.length; i++) {
       if (!sorted.includes(i)) {
@@ -107,7 +107,7 @@ export function CssGridGenerator() {
   // Handle adding item on empty cell click
   const handleAddItem = useCallback((col: number, row: number) => {
     if (isCellOccupied(col, row)) return;
-    
+
     setGridItems((items) => {
       const nextNum = getNextAvailableNumber(items);
       const newItem: GridItem = {
@@ -223,7 +223,7 @@ export function CssGridGenerator() {
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = Math.abs(e.clientX - dragStart.x);
       const deltaY = Math.abs(e.clientY - dragStart.y);
-      
+
       if (deltaX < dragThreshold && deltaY < dragThreshold) return;
 
       if (animationFrameRef.current) {
@@ -247,7 +247,7 @@ export function CssGridGenerator() {
 
           const colSpan = draggedItem.colEnd - draggedItem.colStart;
           const rowSpan = draggedItem.rowEnd - draggedItem.rowStart;
-          
+
           const newColStart = Math.max(1, Math.min(dragStart.colStart + colDelta, columns + 1 - colSpan));
           const newRowStart = Math.max(1, Math.min(dragStart.rowStart + rowDelta, rows + 1 - rowSpan));
           const newColEnd = newColStart + colSpan;
@@ -316,11 +316,11 @@ export function CssGridGenerator() {
               const swappedItems = itemsInNewPosition.map(item => {
                 const colSpan = item.colEnd - item.colStart;
                 const rowSpan = item.rowEnd - item.rowStart;
-                
+
                 // Calculate offset to move from new position to old position
                 const offsetCol = oldColStart - newColStart;
                 const offsetRow = oldRowStart - newRowStart;
-                
+
                 const newItemColStart = item.colStart + offsetCol;
                 const newItemRowStart = item.rowStart + offsetRow;
 
@@ -338,8 +338,8 @@ export function CssGridGenerator() {
               });
 
               // Keep all other items (excluding dragged item and swapped items)
-              const itemsToKeep = items.filter(item => 
-                item.id !== draggedItemId && 
+              const itemsToKeep = items.filter(item =>
+                item.id !== draggedItemId &&
                 !itemsInNewPosition.some(s => s.id === item.id)
               );
 
@@ -377,7 +377,7 @@ export function CssGridGenerator() {
       setResizingItemId(itemId);
       setResizeDirection(direction);
       resizeSessionIdRef.current = `rs-${Date.now().toString(36)}`;
-      
+
       const mergedCells: GridItem[] = [];
       gridItems.forEach((otherItem) => {
         if (otherItem.id !== itemId) {
@@ -414,7 +414,7 @@ export function CssGridGenerator() {
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = Math.abs(e.clientX - resizeStart.x);
       const deltaY = Math.abs(e.clientY - resizeStart.y);
-      
+
       if (deltaX < dragThreshold && deltaY < dragThreshold) return;
 
       if (animationFrameRef.current) {
@@ -554,8 +554,8 @@ export function CssGridGenerator() {
             (cell) => !toRestore.some((r) => r.id === cell.id)
           );
 
-          const itemsToCheck = items.filter((item) => 
-            item.id !== resizingItemId && 
+          const itemsToCheck = items.filter((item) =>
+            item.id !== resizingItemId &&
             !itemsToMerge.some(m => m.id === item.id)
           );
 
@@ -569,8 +569,8 @@ export function CssGridGenerator() {
           });
 
           if (!hasConflict) {
-            const itemsToKeep = items.filter((item) => 
-              item.id !== resizingItemId && 
+            const itemsToKeep = items.filter((item) =>
+              item.id !== resizingItemId &&
               !itemsToMerge.some(m => m.id === item.id)
             );
 
@@ -661,6 +661,7 @@ ${itemsCode}
       {/* Header - Compact */}
       <div className="shrink-0">
         <h1 className="text-xl font-bold mb-1">CSS Grid Generator</h1>
+
         <p className="text-sm text-muted-foreground">
           Create custom Tailwind grid layouts. Click empty cells to add items - drag to move, resize to merge/expand.
         </p>
@@ -726,87 +727,87 @@ ${itemsCode}
               gap: `${gap * 0.25}rem`,
             }}
           >
-          {/* Render all possible grid cells */}
-          {Array.from({ length: rows * columns }, (_, index) => {
-            const row = Math.floor(index / columns) + 1;
-            const col = (index % columns) + 1;
-            const item = gridItems.find(i => 
-              col >= i.colStart && col < i.colEnd && row >= i.rowStart && row < i.rowEnd
-            );
-
-            if (item && item.colStart === col && item.rowStart === row) {
-              // Render grid item
-              const isSelected = selectedItemId === item.id;
-              return (
-                <div
-                  key={item.id}
-                  className={cn(
-                    "group bg-primary/80 text-primary-foreground rounded flex items-center justify-center font-semibold relative cursor-move select-none transition-all",
-                    isSelected && "ring-2 ring-ring ring-offset-2 shadow-lg",
-                    resizingItemId === item.id && "z-10"
-                  )}
-                  style={{
-                    gridColumn: `${item.colStart} / ${item.colEnd}`,
-                    gridRow: `${item.rowStart} / ${item.rowEnd}`,
-                    cursor: draggedItemId === item.id ? "move" : "grab",
-                  }}
-                  onMouseDown={(e) => handleDragStart(e, item.id)}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedItemId(item.id);
-                  }}
-                  onDoubleClick={(e) => {
-                    e.stopPropagation();
-                    handleDoubleClick(item.id);
-                  }}
-                >
-                  <span>{item.content}</span>
-
-                  {/* Resize handles */}
-                  <div
-                    className="absolute top-0 right-0 w-4 h-full cursor-ew-resize opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-20 flex items-center justify-end pr-1"
-                    onMouseDown={(e) => handleResizeStart(e, item.id, "right")}
-                  >
-                    <div className="w-1 h-8 bg-primary-foreground/50 rounded" />
-                  </div>
-                  <div
-                    className="absolute top-0 left-0 w-4 h-full cursor-ew-resize opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-20 flex items-center justify-start pl-1"
-                    onMouseDown={(e) => handleResizeStart(e, item.id, "left")}
-                  >
-                    <div className="w-1 h-8 bg-primary-foreground/50 rounded" />
-                  </div>
-                  <div
-                    className="absolute bottom-0 left-0 w-full h-4 cursor-ns-resize opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-20 flex items-end justify-center pb-1"
-                    onMouseDown={(e) => handleResizeStart(e, item.id, "down")}
-                  >
-                    <div className="w-8 h-1 bg-primary-foreground/50 rounded" />
-                  </div>
-                  <div
-                    className="absolute top-0 left-0 w-full h-4 cursor-ns-resize opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-20 flex items-start justify-center pt-1"
-                    onMouseDown={(e) => handleResizeStart(e, item.id, "up")}
-                  >
-                    <div className="w-8 h-1 bg-primary-foreground/50 rounded" />
-                  </div>
-                </div>
+            {/* Render all possible grid cells */}
+            {Array.from({ length: rows * columns }, (_, index) => {
+              const row = Math.floor(index / columns) + 1;
+              const col = (index % columns) + 1;
+              const item = gridItems.find(i =>
+                col >= i.colStart && col < i.colEnd && row >= i.rowStart && row < i.rowEnd
               );
-            } else if (!item) {
-              // Render empty cell with Plus icon
-              return (
-                <div
-                  key={`empty-${row}-${col}`}
-                  className="border border-dashed border-border/50 rounded flex items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors"
-                  style={{
-                    gridColumn: `${col} / ${col + 1}`,
-                    gridRow: `${row} / ${row + 1}`,
-                  }}
-                  onClick={() => handleAddItem(col, row)}
-                >
-                  <Plus className="h-4 w-4 text-muted-foreground" />
-                </div>
-              );
-            }
-            return null;
-          })}
+
+              if (item && item.colStart === col && item.rowStart === row) {
+                // Render grid item
+                const isSelected = selectedItemId === item.id;
+                return (
+                  <div
+                    key={item.id}
+                    className={cn(
+                      "group bg-primary/80 text-primary-foreground rounded flex items-center justify-center font-semibold relative cursor-move select-none transition-all",
+                      isSelected && "ring-2 ring-ring ring-offset-2 shadow-lg",
+                      resizingItemId === item.id && "z-10"
+                    )}
+                    style={{
+                      gridColumn: `${item.colStart} / ${item.colEnd}`,
+                      gridRow: `${item.rowStart} / ${item.rowEnd}`,
+                      cursor: draggedItemId === item.id ? "move" : "grab",
+                    }}
+                    onMouseDown={(e) => handleDragStart(e, item.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedItemId(item.id);
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      handleDoubleClick(item.id);
+                    }}
+                  >
+                    <span>{item.content}</span>
+
+                    {/* Resize handles */}
+                    <div
+                      className="absolute top-0 right-0 w-4 h-full cursor-ew-resize opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-20 flex items-center justify-end pr-1"
+                      onMouseDown={(e) => handleResizeStart(e, item.id, "right")}
+                    >
+                      <div className="w-1 h-8 bg-primary-foreground/50 rounded" />
+                    </div>
+                    <div
+                      className="absolute top-0 left-0 w-4 h-full cursor-ew-resize opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-20 flex items-center justify-start pl-1"
+                      onMouseDown={(e) => handleResizeStart(e, item.id, "left")}
+                    >
+                      <div className="w-1 h-8 bg-primary-foreground/50 rounded" />
+                    </div>
+                    <div
+                      className="absolute bottom-0 left-0 w-full h-4 cursor-ns-resize opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-20 flex items-end justify-center pb-1"
+                      onMouseDown={(e) => handleResizeStart(e, item.id, "down")}
+                    >
+                      <div className="w-8 h-1 bg-primary-foreground/50 rounded" />
+                    </div>
+                    <div
+                      className="absolute top-0 left-0 w-full h-4 cursor-ns-resize opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity z-20 flex items-start justify-center pt-1"
+                      onMouseDown={(e) => handleResizeStart(e, item.id, "up")}
+                    >
+                      <div className="w-8 h-1 bg-primary-foreground/50 rounded" />
+                    </div>
+                  </div>
+                );
+              } else if (!item) {
+                // Render empty cell with Plus icon
+                return (
+                  <div
+                    key={`empty-${row}-${col}`}
+                    className="border border-dashed border-border/50 rounded flex items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors"
+                    style={{
+                      gridColumn: `${col} / ${col + 1}`,
+                      gridRow: `${row} / ${row + 1}`,
+                    }}
+                    onClick={() => handleAddItem(col, row)}
+                  >
+                    <Plus className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                );
+              }
+              return null;
+            })}
           </div>
         </div>
       </div>

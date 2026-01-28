@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useCallback } from "react";
-import Editor, { OnMount, OnChange } from "@monaco-editor/react";
+import Editor, { OnMount, OnChange, loader } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 import type * as monaco from "monaco-editor";
 import { cn } from "@/lib/utils";
@@ -25,6 +25,17 @@ const languageMap: Record<Language, string> = {
   js: "javascript",
 };
 
+// Configure Monaco loader to use local or specific CDN path
+// and ensure it works with COEP (Cross-Origin-Embedder-Policy)
+if (typeof window !== "undefined") {
+  loader.config({
+    paths: {
+      vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs",
+    },
+  });
+}
+
+
 export function CodeEditor({
   value,
   onChange,
@@ -36,7 +47,7 @@ export function CodeEditor({
 
   const handleEditorMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
-    
+
     // Store Monaco globally so monaco-types utility can access it
     if (typeof window !== "undefined") {
       (window as any).monaco = monaco;

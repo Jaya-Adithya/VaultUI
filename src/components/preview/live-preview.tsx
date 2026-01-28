@@ -65,7 +65,11 @@ function generateMultiFileHtmlDocument(
   // Vue (basic SFC preview)
   if (framework === "vue" || vueFiles.length > 0) {
     const vueCode = (vueFiles[0]?.code ?? files[0]?.code ?? "").toString();
-    const safeVueCode = vueCode.replace(/`/g, "\\`").replace(/\$/g, "\\$");
+    // Use JSON.stringify for proper escaping (handles all edge cases)
+    const safeVueCode = JSON.stringify(vueCode)
+      .replace(/\u2028/g, "\\u2028")
+      .replace(/\u2029/g, "\\u2029")
+      .replace(/<\/script/gi, "<\\/script");
 
     return `
       <!DOCTYPE html>
@@ -81,48 +85,267 @@ function generateMultiFileHtmlDocument(
         <body>
           <div id="root"></div>
           <script type="module">
-            import { createApp, reactive, ref, computed } from "https://unpkg.com/vue@3/dist/vue.esm-browser.js";
-            const source = \`${safeVueCode}\`;
+            (async () => {
+              const { createApp, reactive, ref, computed, watch, watchEffect, onMounted, onUnmounted, h } = await import("https://unpkg.com/vue@3/dist/vue.esm-browser.js");
+              
+              // Dynamically import VueUse if needed
+              let vueUseCore = null;
+              const checkVueUse = async () => {
+                try {
+                  vueUseCore = await import("https://esm.sh/@vueuse/core@latest?deps=vue@3");
+                } catch (e) {
+                  console.warn('Failed to load VueUse:', e);
+                }
+              };
+              
+              const source = ${safeVueCode};
             
-            // Extract template
-            const templateMatch = source.match(/<template[^>]*>([\\s\\S]*?)<\\/template>/i);
-            const template = templateMatch ? templateMatch[1].trim() : null;
+            // Helper function to escape HTML
+            const escapeHtml = (text) => {
+              const div = document.createElement('div');
+              div.textContent = text;
+              return div.innerHTML;
+            };
             
-            // Extract script setup
-            const scriptSetupMatch = source.match(/<script[^>]*\\s+setup[^>]*>([\\s\\S]*?)<\\/script>/i);
-            const scriptSetup = scriptSetupMatch ? scriptSetupMatch[1].trim() : null;
+            // Extract template - more robust regex that handles attributes and whitespace
+            let template = null;
+            const templateStart = source.indexOf('<template');
+            if (templateStart !== -1) {
+              const templateEnd = source.indexOf('</template>', templateStart);
+              if (templateEnd !== -1) {
+                const templateOpenEnd = source.indexOf('>', templateStart);
+                if (templateOpenEnd !== -1 && templateOpenEnd < templateEnd) {
+                  template = source.substring(templateOpenEnd + 1, templateEnd).trim();
+                }
+              }
+            }
             
-            // Extract regular script (fallback)
-            const scriptMatch = source.match(/<script[^>]*(?!\\s+setup)[^>]*>([\\s\\S]*?)<\\/script>/i);
-            const script = scriptMatch ? scriptMatch[1].trim() : null;
-            
+            // Fallback to regex if indexOf fails
             if (!template) {
-              document.getElementById("root").innerHTML = '<div class="error-display">Vue preview: missing &lt;template&gt; block.</div>';
+              const templateMatch = source.match(/<template[^>]*>([\\s\\S]*?)<\\/template>/i);
+              template = templateMatch ? templateMatch[1].trim() : null;
+            }
+            
+            // Extract style block - more robust extraction
+            let styleContent = null;
+            const styleStart = source.indexOf('<style');
+            if (styleStart !== -1) {
+              const styleEnd = source.indexOf('</style>', styleStart);
+              if (styleEnd !== -1) {
+                const styleOpenEnd = source.indexOf('>', styleStart);
+                if (styleOpenEnd !== -1 && styleOpenEnd < styleEnd) {
+                  styleContent = source.substring(styleOpenEnd + 1, styleEnd).trim();
+                }
+              }
+            }
+            
+            // Fallback to regex
+            if (!styleContent) {
+              const styleMatch = source.match(/<style[^>]*>([\\s\\S]*?)<\\/style>/i);
+              styleContent = styleMatch ? styleMatch[1].trim() : null;
+            }
+            
+            // Inject styles if present
+            if (styleContent) {
+              const styleEl = document.createElement('style');
+              styleEl.textContent = styleContent;
+              document.head.appendChild(styleEl);
+            }
+            
+            // Extract script setup - more robust extraction
+            let scriptSetup = null;
+            let script = null;
+            
+            // Find all script tags
+            const scriptTags = [];
+            let searchIndex = 0;
+            while (true) {
+              const scriptStart = source.indexOf('<script', searchIndex);
+              if (scriptStart === -1) break;
+              
+              const scriptOpenEnd = source.indexOf('>', scriptStart);
+              if (scriptOpenEnd === -1) break;
+              
+              const scriptEnd = source.indexOf('</script>', scriptOpenEnd);
+              if (scriptEnd === -1) break;
+              
+              const scriptTag = source.substring(scriptStart, scriptOpenEnd + 1);
+              const scriptContent = source.substring(scriptOpenEnd + 1, scriptEnd).trim();
+              
+              // Check if it's a setup script
+              if (/setup/i.test(scriptTag) || /lang=["']ts["']/i.test(scriptTag)) {
+                scriptSetup = scriptContent;
+              } else if (!script) {
+                script = scriptContent;
+              }
+              
+              searchIndex = scriptEnd + 9; // Move past </script>
+            }
+            
+            // Fallback to regex
+            if (!scriptSetup) {
+              const scriptSetupMatch = source.match(/<script[^>]*\\s+setup[^>]*>([\\s\\S]*?)<\\/script>/i);
+              scriptSetup = scriptSetupMatch ? scriptSetupMatch[1].trim() : null;
+            }
+            
+            if (!script) {
+              const scriptMatch = source.match(/<script[^>]*(?!\\s+setup)[^>]*>([\\s\\S]*?)<\\/script>/i);
+              script = scriptMatch ? scriptMatch[1].trim() : null;
+            }
+            
+            // Create a stub AnimateGrid component if it's used but not defined
+            const AnimateGrid = {
+              name: 'AnimateGrid',
+              props: ['cards', 'textGlowStartColor', 'perspective', 'textGlowEndColor', 'rotateX', 'rotateY'],
+              setup(props, { slots }) {
+                return () => {
+                  const defaultSlot = slots.default || slots.logo;
+                  return h('div', {
+                    class: 'animate-grid',
+                    style: {
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(4, 1fr)',
+                      gap: '1rem',
+                      padding: '1rem',
+                      perspective: props.perspective + 'px'
+                    }
+                  }, props.cards?.map((card, index) => {
+                    return h('div', {
+                      key: index,
+                      class: 'grid-item',
+                      style: {
+                        padding: '1rem',
+                        background: 'rgba(255, 255, 255, 0.1)',
+                        borderRadius: '8px',
+                        transform: \`rotateX(\${props.rotateX}deg) rotateY(\${props.rotateY}deg)\`
+                      }
+                    }, defaultSlot ? defaultSlot({ logo: card.logo }) : [h('div', 'Card ' + index)]);
+                  }) || []);
+                };
+              }
+            };
+            
+            // Debug: log source if template is missing
+            if (!template) {
+              console.error('Vue template extraction failed. Source length:', source.length);
+              console.error('Source preview:', source.substring(0, 200));
+              document.getElementById("root").innerHTML = '<div class="error-display">Vue preview: missing &lt;template&gt; block.<br><br>Source preview: ' + 
+                (source.length > 0 ? escapeHtml(source.substring(0, 500)) : 'Empty source') + '</div>';
             } else {
               try {
+                // Check if VueUse is needed and load it first
+                const needsVueUseCheck = /@vueuse\\/core/i.test(source);
+                if (needsVueUseCheck) {
+                  await checkVueUse();
+                }
+                
                 let componentOptions = { template };
                 
                 if (scriptSetup) {
-                  // Transform script setup to a setup function
-                  // This extracts reactive data and makes it available to template
-                  const setupCode = scriptSetup.trim();
+                  // Enhanced script setup processing
+                  let setupCode = scriptSetup.trim();
                   
-                  // Create a setup function wrapper
-                  // Note: Full script setup support requires Vue compiler, this is a basic approximation
+                  // Check if VueUse is needed
+                  const needsVueUse = needsVueUseCheck;
+                  
+                  // Handle VueUse imports - replace with dynamic import
+                  if (needsVueUse) {
+                    setupCode = setupCode.replace(
+                      /import\\s+\\{([^}]+)\\}\s+from\\s+["']@vueuse\\/core["'];?/g,
+                      (match, imports) => {
+                        // Extract import names
+                        const importNames = imports.split(',').map(i => i.trim());
+                        return \`// VueUse imports will be available via vueUseCore\`;
+                      }
+                    );
+                  }
+                  
+                  // Handle SVG imports - replace with placeholder data URL
+                  setupCode = setupCode.replace(
+                    /import\\s+(\\w+)\\s+from\\s+["']\\.\\/[^"']+\\.svg["'];?/g,
+                    'const $1 = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0IiBmaWxsPSIjY2NjIi8+PC9zdmc+";'
+                  );
+                  
+                  // Handle defineProps macro - transform to runtime function
+                  setupCode = setupCode.replace(
+                    /const\\s+props\\s*=\\s*defineProps<[^>]+>\\(\\)/g,
+                    'const props = { textGlowStartColor: "", perspective: 1000, textGlowEndColor: "", rotateX: 0, rotateY: 0 }'
+                  );
+                  
+                  // Strip TypeScript type annotations (basic)
+                  setupCode = setupCode
+                    .replace(/:\\s*\\w+(\\[\\])?(\\s*[=,;)])/g, '$2') // Remove simple type annotations
+                    .replace(/as\\s+\\w+/g, '') // Remove 'as Type' casts
+                    .replace(/\\btype\\s+\\w+\\s*=\\s*[^;]+;/g, '') // Remove type definitions
+                    .replace(/\\binterface\\s+\\w+\\s*\\{[^}]*\\}/g, ''); // Remove interface definitions
+                  
                   componentOptions.setup = function() {
-                    // Execute script setup code in this context
-                    // Variables declared with const/let/var will be available
                     try {
-                      // Use eval to execute in current scope (limited support)
-                      const setupContext = { reactive, ref, computed };
-                      const setupFn = new Function(...Object.keys(setupContext), setupCode);
+                      // Create VueUse composables - use loaded module or shims
+                      const useMouseInElement = vueUseCore?.useMouseInElement || function(el) {
+                        const isOutside = ref(true);
+                        if (el && typeof el.addEventListener === 'function') {
+                          el.addEventListener('mouseenter', () => { isOutside.value = false; });
+                          el.addEventListener('mouseleave', () => { isOutside.value = true; });
+                        }
+                        return { isOutside };
+                      };
+                      
+                      const useDebounceFn = vueUseCore?.useDebounceFn || function(fn, delay = 200) {
+                        let timeoutId = null;
+                        return function(...args) {
+                          clearTimeout(timeoutId);
+                          timeoutId = setTimeout(() => fn.apply(this, args), delay);
+                        };
+                      };
+                      
+                      // Create a more comprehensive setup context
+                      const setupContext = {
+                        reactive,
+                        ref,
+                        computed,
+                        watch,
+                        watchEffect,
+                        onMounted,
+                        onUnmounted,
+                        // Add console for debugging
+                        console: window.console,
+                        // Add defineProps as a runtime function
+                        defineProps: function(propsDef) {
+                          // Return a reactive object with default values
+                          return reactive(propsDef || {});
+                        },
+                        // VueUse composables
+                        useMouseInElement,
+                        useDebounceFn,
+                        // Make AnimateGrid available in setup context
+                        AnimateGrid
+                      };
+                      
+                      // Parse the setup code to extract variable declarations
+                      const varPattern = /(?:const|let|var)\\s+(\\w+)\\s*=/g;
+                      const variables = [];
+                      let match;
+                      while ((match = varPattern.exec(setupCode)) !== null) {
+                        variables.push(match[1]);
+                      }
+                      
+                      // Create a function that returns all declared variables
+                      const wrappedCode = setupCode + '\\n\\n' +
+                        '// Return all declared variables for template access\\n' +
+                        'return {\\n' +
+                        '  ' + variables.join(',\\n  ') + '\\n' +
+                        '};';
+                      
+                      
+                      const setupFn = new Function(...Object.keys(setupContext), wrappedCode);
                       const result = setupFn(...Object.values(setupContext));
                       
-                      // Return all variables from script setup
-                      // This is a simplified approach - full support needs compiler
                       return result || {};
                     } catch (e) {
-                      console.warn('Vue script setup execution warning:', e);
+                      console.error('Vue script setup execution error:', e);
+                      console.error('Setup code:', setupCode);
+                      // Return empty object to prevent complete failure
                       return {};
                     }
                   };
@@ -135,15 +358,21 @@ function generateMultiFileHtmlDocument(
                       componentOptions = { ...componentOptions, ...scriptResult };
                     }
                   } catch (e) {
-                    // Ignore script errors, use template only
+                    console.warn('Vue script execution warning:', e);
                   }
                 }
                 
-                createApp(componentOptions).mount("#root");
+                const app = createApp(componentOptions);
+                // Register AnimateGrid globally so it's available in templates
+                app.component('AnimateGrid', AnimateGrid);
+                app.mount("#root");
               } catch (e) {
-                document.getElementById("root").innerHTML = '<div class="error-display">Vue preview error: ' + (e.message || String(e)) + '</div>';
+                const errorMsg = e.message || String(e);
+                console.error('Vue component error:', e);
+                document.getElementById("root").innerHTML = '<div class="error-display">Vue preview error: ' + errorMsg + '</div>';
               }
             }
+            })();
           </script>
         </body>
       </html>

@@ -138,6 +138,10 @@ export async function GET(request: Request) {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
+      // Explicitly disable cross-origin isolation for preview frame
+      // This allows loading external assets (SVGs, images, etc.) without CORP headers
+      "Cross-Origin-Embedder-Policy": "unsafe-none",
+      "Cross-Origin-Opener-Policy": "unsafe-none",
     },
   });
 }
