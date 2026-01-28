@@ -189,25 +189,25 @@ function parseNamedList(list: string): Array<{ imported: string; local: string }
  */
 function extractClassNamesFromCSS(cssCode: string): Record<string, string> {
   const classNames: Record<string, string> = {};
-  
+
   // Match CSS class selectors: .className { ... } or .className:something { ... }
   // Also handle nested selectors and pseudo-classes
   const classRegex = /\.([a-zA-Z_][a-zA-Z0-9_-]*)(?::[a-zA-Z-]+|\[[^\]]+\])?\s*\{/g;
   let match;
   const seen = new Set<string>();
-  
+
   while ((match = classRegex.exec(cssCode)) !== null) {
     const className = match[1];
     // Avoid duplicates
     if (seen.has(className)) continue;
     seen.add(className);
-    
+
     // CSS modules typically use camelCase or keep original name
     // For simplicity, we'll use the original class name as both key and value
     // In a real CSS module, the class name would be hashed, but for preview we'll use the original
     classNames[className] = className;
   }
-  
+
   return classNames;
 }
 
@@ -230,20 +230,20 @@ export function generatePreviewRuntime(
   allFiles?: Array<{ filename: string; code: string }>
 ): PreviewRuntimeResult {
   const imports = extractImports(originalCode);
-  
+
   // #region agent log
-  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generatePreviewRuntime',message:'generatePreviewRuntime called',data:{imports,importsCount:imports.length,hasAllFiles:!!allFiles,allFilesCount:allFiles?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'preview-runtime-generator.ts:generatePreviewRuntime', message: 'generatePreviewRuntime called', data: { imports, importsCount: imports.length, hasAllFiles: !!allFiles, allFilesCount: allFiles?.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => { });
   // #endregion
 
   const mode = decidePreviewMode(imports);
 
   // #region agent log
-  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generatePreviewRuntime',message:'Preview mode determined',data:{mode,imports},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'preview-runtime-generator.ts:generatePreviewRuntime', message: 'Preview mode determined', data: { mode, imports }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
   // #endregion
 
   if (mode === "disabled") {
     // #region agent log
-    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generatePreviewRuntime',message:'Preview disabled - returning error',data:{imports},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'preview-runtime-generator.ts:generatePreviewRuntime', message: 'Preview disabled - returning error', data: { imports }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
     // #endregion
     return {
       mode: "disabled",
@@ -360,12 +360,6 @@ export function generatePreviewRuntime(
           
           let transformed;
           try {
-            // DEBUG: Log source before transformation
-            console.log('[PreviewRuntime] Transforming source:', {
-              sourceLength: __VAULT_SOURCE__.length,
-              sourcePreview: __VAULT_SOURCE__.substring(0, 200),
-              hasJSX: /<[A-Z]/.test(__VAULT_SOURCE__) || /<svg/.test(__VAULT_SOURCE__) || /width=\\{/.test(__VAULT_SOURCE__)
-            });
             
             transformed = Babel.transform(__VAULT_SOURCE__, {
               presets: [
@@ -374,13 +368,7 @@ export function generatePreviewRuntime(
               ],
               filename: "VaultPreview.tsx",
             }).code;
-            
-            // DEBUG: Log transformed code
-            console.log('[PreviewRuntime] Transformation successful:', {
-              transformedLength: transformed.length,
-              transformedPreview: transformed.substring(0, 300),
-              hasReactCreateElement: transformed.includes('React.createElement')
-            });
+
           } catch (compileError) {
             // DEBUG: Log compilation error details
             console.error('[PreviewRuntime] Babel compilation failed:', {
@@ -502,7 +490,7 @@ export function generatePreviewRuntime(
  */
 function generateDependencyLoader(imports: string[], allowAutoDetect: boolean = false): string {
   // #region agent log
-  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generateDependencyLoader',message:'generateDependencyLoader called',data:{imports,allowAutoDetect},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'preview-runtime-generator.ts:generateDependencyLoader', message: 'generateDependencyLoader called', data: { imports, allowAutoDetect }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => { });
   // #endregion
 
   const loaders: string[] = [];
@@ -523,7 +511,7 @@ function generateDependencyLoader(imports: string[], allowAutoDetect: boolean = 
     if (imp.includes('/') && !imp.startsWith('@') && !imp.startsWith('./') && !imp.startsWith('../')) {
       const basePackage = imp.split('/')[0];
       const subpath = imp.substring(basePackage.length + 1);
-      
+
       // For gsap subpath imports, load them from esm.sh
       if (basePackage === 'gsap') {
         const importName = imp.replace(/[^a-zA-Z0-9]/g, "_");
@@ -537,14 +525,14 @@ function generateDependencyLoader(imports: string[], allowAutoDetect: boolean = 
         loaders.push(`window.${importName} = ${importName}Module;`);
         autoDetected.push(imp);
         // #region agent log
-        fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generateDependencyLoader',message:'Loading gsap subpath import',data:{imp,basePackage,subpath},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'preview-runtime-generator.ts:generateDependencyLoader', message: 'Loading gsap subpath import', data: { imp, basePackage, subpath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'B' }) }).catch(() => { });
         // #endregion
         return;
       }
-      
+
       // For other subpath imports (like next/image), skip - they're handled in preview wrapper
       // #region agent log
-      fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generateDependencyLoader',message:'Skipping subpath import in loader',data:{imp},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'preview-runtime-generator.ts:generateDependencyLoader', message: 'Skipping subpath import in loader', data: { imp }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'B' }) }).catch(() => { });
       // #endregion
       return;
     }
@@ -635,7 +623,7 @@ function generatePreviewWrapperSource(
     const mod = imp.module;
     if (mod === "react" || mod === "react-dom") continue;
     if (mod.startsWith("./") || mod.startsWith("../")) continue;
-    
+
     // Handle subpath imports (e.g., "gsap/ScrollTrigger")
     if (mod.includes('/') && !mod.startsWith('@') && !mod.startsWith('./') && !mod.startsWith('../')) {
       const basePackage = mod.split('/')[0];
@@ -646,7 +634,7 @@ function generatePreviewWrapperSource(
       // Other subpath imports (like next/image) are handled separately
       continue;
     }
-    
+
     const cfg = getDependencyConfig(mod);
     if (cfg?.type === "cdn") {
       moduleToDepVar[mod] = cfg.global || mod.replace(/[^a-zA-Z0-9]/g, "_");
@@ -702,33 +690,33 @@ function generatePreviewWrapperSource(
         let cssFile = allFiles?.find(f => {
           const fname = f.filename;
           const importName = cssModulePath;
-          
+
           // Exact match (case-sensitive first, then case-insensitive)
           if (fname === importName) return true;
           if (fname.toLowerCase() === importName.toLowerCase()) return true;
-          
+
           // Match without path (just filename)
           const fnameOnly = fname.split('/').pop() || fname;
           const importNameOnly = importName.split('/').pop() || importName;
           if (fnameOnly === importNameOnly) return true;
           if (fnameOnly.toLowerCase() === importNameOnly.toLowerCase()) return true;
-          
+
           return false;
         });
-        
+
         // If no exact match, try to find any CSS file (fallback)
         if (!cssFile) {
           cssFile = allFiles?.find((f) => f.filename.endsWith(".css"));
         }
-        
+
         if (cssFile && cssFile.code) {
           // Generate CSS module object from CSS file
           // Extract class names from CSS and create a styles object
           const classNames = extractClassNamesFromCSS(cssFile.code);
           const stylesObject = JSON.stringify(classNames);
-          
+
           console.log(`[PreviewRuntime] CSS module import: ${mod} -> ${cssFile.filename}, classes:`, Object.keys(classNames));
-          
+
           if (imp.kind === "default" && imp.defaultName) {
             // Default import: import styles from './page.module.css'
             declareOnce(imp.defaultName, stylesObject);
@@ -747,7 +735,7 @@ function generatePreviewWrapperSource(
         }
         continue;
       }
-      
+
       // Regular local shims
       if (imp.defaultName) {
         // no default export support for local shim modules (skip)
@@ -776,7 +764,7 @@ function generatePreviewWrapperSource(
         const imported = n.imported;
         const local = n.local;
         // #region agent log
-        fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generatePreviewWrapperSource',message:'Binding react named import',data:{imported,local},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'E'})}).catch(()=>{});
+        fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'preview-runtime-generator.ts:generatePreviewWrapperSource', message: 'Binding react named import', data: { imported, local }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'E' }) }).catch(() => { });
         // #endregion
         // Prefer window.React (set by runtime), fall back to deps if present
         declareOnce(
@@ -825,36 +813,36 @@ function generatePreviewWrapperSource(
     if (mod.startsWith("gsap/")) {
       const depVar = mod.replace(/[^a-zA-Z0-9]/g, "_");
       // #region agent log
-      fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generatePreviewWrapperSource',message:'Processing gsap subpath import',data:{mod,depVar,hasModuleToDepVar:!!moduleToDepVar[mod],impKind:imp.kind,hasNamed:!!imp.named,namedCount:imp.named?.length,named:imp.named},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'preview-runtime-generator.ts:generatePreviewWrapperSource', message: 'Processing gsap subpath import', data: { mod, depVar, hasModuleToDepVar: !!moduleToDepVar[mod], impKind: imp.kind, hasNamed: !!imp.named, namedCount: imp.named?.length, named: imp.named }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'B' }) }).catch(() => { });
       // #endregion
-      
+
       // Check if the module was loaded in the dependency loader
       const loadedVar = moduleToDepVar[mod] || depVar;
-      
+
       // Handle named imports: import { ScrollTrigger } from 'gsap/ScrollTrigger'
       if ((imp.kind === "named" || imp.kind === "defaultNamed") && imp.named) {
         for (const n of imp.named) {
           const imported = n.imported;
           const local = n.local;
           // #region agent log
-          fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'preview-runtime-generator.ts:generatePreviewWrapperSource',message:'Binding gsap named import',data:{mod,loadedVar,imported,local},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+          fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'preview-runtime-generator.ts:generatePreviewWrapperSource', message: 'Binding gsap named import', data: { mod, loadedVar, imported, local }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'B' }) }).catch(() => { });
           // #endregion
           // Access named export from the module (gsap/ScrollTrigger exports ScrollTrigger as named export)
           // Try multiple access patterns: window variable, window.__deps module, window.__deps module.default
           declareOnce(local, `(window.${loadedVar} && window.${loadedVar}.${imported}) || (window.__deps && window.__deps["${mod}"] && window.__deps["${mod}"].${imported}) || (window.__deps && window.__deps["${mod}"] && window.__deps["${mod}"].default && window.__deps["${mod}"].default.${imported}) || (window.__deps && window.__deps["${mod}"] && window.__deps["${mod}"].default && window.__deps["${mod}"].default.${imported}) || {}`);
         }
       }
-      
+
       // Default import: import ScrollTrigger from 'gsap/ScrollTrigger'
       if (imp.kind === "default" && imp.defaultName) {
         declareOnce(imp.defaultName, `(window.${loadedVar} && window.${loadedVar}.default) || (window.${loadedVar}) || (window.__deps && window.__deps["${mod}"]) || {}`);
       }
-      
+
       // Namespace import: import * as ScrollTrigger from 'gsap/ScrollTrigger'
       if (imp.kind === "namespace" && imp.namespaceName) {
         declareOnce(imp.namespaceName, `(window.${loadedVar}) || (window.__deps && window.__deps["${mod}"]) || {}`);
       }
-      
+
       continue;
     }
 

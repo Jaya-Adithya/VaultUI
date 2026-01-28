@@ -1,8 +1,32 @@
 "use client";
 
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
-import { AlertTriangle, Maximize2, Minimize2, Play } from "lucide-react";
+import {
+  AlertTriangle,
+  Maximize2,
+  Minimize2,
+  Play,
+  Smartphone,
+  Tablet,
+  Monitor,
+  RotateCcw,
+  RotateCw,
+  Search,
+  ChevronDown,
+  GripHorizontal,
+  GripVertical,
+  ZoomIn,
+} from "lucide-react";
+import { motion, AnimatePresence, useMotionValue, useSpring } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { Framework } from "@/lib/detect-framework";
 import { generatePreviewRuntime } from "@/lib/preview-runtime-generator";
@@ -21,26 +45,72 @@ interface LivePreviewProps {
   onRun?: () => void;
 }
 
+const DEVICES = [
+  { name: "Responsive", width: "100%", height: "100%", icon: Monitor },
+  { name: "Desktop", width: 1280, height: 800, icon: Monitor },
+  { name: "MacBook Air", width: 1440, height: 900, icon: Monitor },
+  { name: "iMac 27\"", width: 2560, height: 1440, icon: Monitor },
+  { name: "iPhone SE", width: 375, height: 667, icon: Smartphone },
+  { name: "iPhone XR", width: 414, height: 896, icon: Smartphone },
+  { name: "iPhone 12 Pro", width: 390, height: 844, icon: Smartphone },
+  { name: "iPhone 14 Pro Max", width: 430, height: 932, icon: Smartphone },
+  { name: "Pixel 7", width: 412, height: 915, icon: Smartphone },
+  { name: "Samsung Galaxy S20 Ultra", width: 412, height: 915, icon: Smartphone },
+  { name: "iPad Mini", width: 768, height: 1024, icon: Tablet },
+  { name: "iPad Air", width: 820, height: 1180, icon: Tablet },
+  { name: "iPad Pro", width: 1024, height: 1366, icon: Tablet },
+  { name: "Surface Pro 7", width: 912, height: 1368, icon: Tablet },
+  { name: "Galaxy Z Fold 5", width: 373, height: 911, icon: Smartphone },
+];
+
+const ZOOM_LEVELS = [
+  { label: "50%", value: 0.5 },
+  { label: "75%", value: 0.75 },
+  { label: "100%", value: 1.0 },
+  { label: "125%", value: 1.25 },
+  { label: "150%", value: 1.5 },
+  { label: "200%", value: 2.0 },
+];
+
 function generateMultiFileHtmlDocument(
   files: ComponentFile[],
-  framework: Framework
+  framework: Framework,
+  viewportWidth?: number,
+  viewportHeight?: number,
+  zoom?: number
 ): string {
+  // Generate viewport meta tag based on dimensions and zoom (like Chrome DevTools)
+  const getViewportMeta = () => {
+    if (viewportWidth && viewportHeight) {
+      // Chrome DevTools approach: set explicit viewport width and scale
+      const scale = zoom || 1.0;
+      return `<meta name="viewport" content="width=${viewportWidth}, initial-scale=${scale}, maximum-scale=${scale}, minimum-scale=${scale}, user-scalable=no">`;
+    }
+    return `<meta name="viewport" content="width=device-width, initial-scale=1.0">`;
+  };
+  
+  const viewportMeta = getViewportMeta();
   const baseStyles = `
     * {
+      box-sizing: border-box;
+    }
+    html, body {
       margin: 0;
       padding: 0;
-      box-sizing: border-box;
+      width: 100%;
+      min-height: 100%;
     }
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #0a0a0a;
       color: #fafafa;
-      padding: 16px;
-      min-height: 100vh;
+      overflow: auto;
     }
     #root {
       width: 100%;
       min-height: 100%;
+      display: flex;
+      flex-direction: column;
     }
     .error-display {
       color: #ef4444;
@@ -76,7 +146,7 @@ function generateMultiFileHtmlDocument(
       <html>
         <head>
           <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          ${viewportMeta}
           <style>
             ${baseStyles}
             ${cssFiles.map((f) => f.code).join("\n")}
@@ -386,7 +456,7 @@ function generateMultiFileHtmlDocument(
       <html>
         <head>
           <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          ${viewportMeta}
           <style>${baseStyles}</style>
         </head>
         <body>
@@ -417,7 +487,7 @@ function generateMultiFileHtmlDocument(
         <html>
           <head>
             <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            ${viewportMeta}
             <style>${baseStyles}</style>
           </head>
           <body>
@@ -462,7 +532,7 @@ function generateMultiFileHtmlDocument(
       <html>
         <head>
           <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          ${viewportMeta}
           <style>
             ${baseStyles}
             ${cssCode}
@@ -585,7 +655,7 @@ function generateMultiFileHtmlDocument(
       <html>
         <head>
           <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          ${viewportMeta}
           <script src="https://cdn.tailwindcss.com"></script>
           <style>
             ${baseStyles}
@@ -594,29 +664,25 @@ function generateMultiFileHtmlDocument(
               margin: 0;
               padding: 0;
               width: 100%;
-              height: 100%;
-              overflow: hidden;
+              min-height: 100%;
+              overflow: auto;
             }
             body {
               display: flex;
-              align-items: center;
-              justify-content: center;
+              align-items: flex-start;
+              justify-content: flex-start;
             }
             #root {
               display: flex;
-              align-items: center;
-              justify-content: center;
+              flex-direction: column;
               width: 100%;
-              height: 100%;
+              min-height: 100%;
               max-width: 100%;
-              max-height: 100%;
-              overflow: auto;
-              padding: 16px;
+              overflow: visible;
               box-sizing: border-box;
             }
             #root > * {
               max-width: 100%;
-              max-height: 100%;
             }
             ${cssCode}
           </style>
@@ -747,15 +813,110 @@ function generateMultiFileHtmlDocument(
 
 export function LivePreview({ files, framework, className, onRun }: LivePreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [key, setKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFrameLoaded, setIsFrameLoaded] = useState(false);
 
+  // Responsive settings state
+  const [selectedDevice, setSelectedDevice] = useState(DEVICES[0].name); // Start with Responsive
+  const [customWidth, setCustomWidth] = useState<string>("");
+  const [customHeight, setCustomHeight] = useState<string>("");
+  const [zoom, setZoom] = useState(1.0);
+  const [isPortrait, setIsPortrait] = useState(true);
+  const [isMagnifierActive, setIsMagnifierActive] = useState(false);
+
+  // Motion values for magnifier
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+  const lensX = useSpring(mouseX, { damping: 30, stiffness: 200 });
+  const lensY = useSpring(mouseY, { damping: 30, stiffness: 200 });
+
+  const currentDevice = useMemo(
+    () => DEVICES.find((d) => d.name === selectedDevice) || DEVICES[0],
+    [selectedDevice]
+  );
+
+  // Track container dimensions for responsive mode (like Chrome DevTools)
+  const [containerDimensions, setContainerDimensions] = useState({ width: 1280, height: 800 });
+
+  // Use ResizeObserver to track container size changes (industrial standard approach)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const updateDimensions = () => {
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        // Account for padding (p-4 = 16px on each side = 32px total)
+        const padding = 32;
+        setContainerDimensions({ 
+          width: Math.max(200, Math.floor(rect.width - padding)),
+          height: Math.max(200, Math.floor(rect.height - padding))
+        });
+      }
+    };
+
+    // Initial measurement with a small delay to ensure container is rendered
+    const timeoutId = setTimeout(updateDimensions, 0);
+
+    // Use ResizeObserver for efficient size tracking (like Chrome DevTools)
+    const resizeObserver = new ResizeObserver(() => {
+      updateDimensions();
+    });
+
+    resizeObserver.observe(container);
+
+    // Also listen to window resize as fallback
+    window.addEventListener('resize', updateDimensions);
+
+    return () => {
+      clearTimeout(timeoutId);
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateDimensions);
+    };
+  }, []);
+
+  const dimensions = useMemo(() => {
+    if (selectedDevice === "Responsive") {
+      // For responsive mode, use actual pixel values (like Chrome DevTools)
+      // If custom values are percentages or empty, use container dimensions
+      let w = parseInt(customWidth);
+      let h = parseInt(customHeight);
+      
+      if (isNaN(w) || customWidth === "100%" || customWidth === "") {
+        w = containerDimensions.width || 1280;
+      }
+      if (isNaN(h) || customHeight === "100%" || customHeight === "") {
+        h = containerDimensions.height || 800;
+      }
+      
+      // Ensure minimum dimensions
+      w = Math.max(200, w);
+      h = Math.max(200, h);
+      
+      return { width: w, height: h };
+    }
+
+    let w = typeof currentDevice.width === "number" ? currentDevice.width : 375;
+    let h = typeof currentDevice.height === "number" ? currentDevice.height : 667;
+
+    if (!isPortrait) {
+      [w, h] = [h, w];
+    }
+
+    return { width: w, height: h };
+  }, [selectedDevice, currentDevice, customWidth, customHeight, isPortrait, containerDimensions]);
+
   const srcDoc = useMemo(
-    () => generateMultiFileHtmlDocument(files, framework),
-    [files, framework]
+    () => {
+      const width = typeof dimensions.width === "number" ? dimensions.width : undefined;
+      const height = typeof dimensions.height === "number" ? dimensions.height : undefined;
+      return generateMultiFileHtmlDocument(files, framework, width, height, zoom);
+    },
+    [files, framework, dimensions.width, dimensions.height, zoom]
   );
 
   const postHtmlToFrame = useCallback(
@@ -777,20 +938,24 @@ export function LivePreview({ files, framework, className, onRun }: LivePreviewP
 
   const handleLoad = useCallback(() => {
     setIsFrameLoaded(true);
-    // Send the latest HTML as soon as the frame is ready.
     postHtmlToFrame(srcDoc);
   }, [postHtmlToFrame, srcDoc]);
 
+  const prevSrcDocRef = useRef<string>("");
+
   useEffect(() => {
+    // Only trigger loading state and post message if srcDoc actually changed or frame just loaded
+    if (srcDoc === prevSrcDocRef.current && isFrameLoaded) return;
+
     setIsLoading(true);
     setHasError(false);
-    // If the frame is already loaded, just update its content.
+
     if (isFrameLoaded) {
+      prevSrcDocRef.current = srcDoc;
       postHtmlToFrame(srcDoc);
     }
   }, [srcDoc, isFrameLoaded, postHtmlToFrame]);
 
-  // Receive lifecycle messages from /preview/frame
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
@@ -799,9 +964,6 @@ export function LivePreview({ files, framework, className, onRun }: LivePreviewP
       if (!data || typeof data !== "object") return;
       if (data.type === "preview:loaded") {
         setIsLoading(false);
-      }
-      if (data.type === "preview:accepted") {
-        // keep spinner until the inner iframe actually loads
       }
     };
     window.addEventListener("message", onMessage);
@@ -813,56 +975,217 @@ export function LivePreview({ files, framework, className, onRun }: LivePreviewP
       if (isLoading) {
         setIsLoading(false);
         setHasError(true);
+        console.warn("[LivePreview] Timeout reached after 15s. Iframe might be blocked or taking too long to initialize.");
       }
-    }, 5000);
+    }, 15000); // Increased to 15s for slower reloads
 
     return () => clearTimeout(timeout);
   }, [isLoading, key]);
 
+  const handleDeviceChange = (value: string) => {
+    setSelectedDevice(value);
+    const device = DEVICES.find((d) => d.name === value);
+    if (device && typeof device.width === "number") {
+      setCustomWidth(device.width.toString());
+      setCustomHeight(device.height.toString());
+    } else if (value === "Responsive") {
+      // For responsive mode, use container dimensions (like Chrome DevTools)
+      setCustomWidth("");
+      setCustomHeight("");
+    }
+  };
+
+  const handleRotate = () => {
+    setIsPortrait(!isPortrait);
+  };
+
   return (
     <div
       className={cn(
-        "relative flex flex-col bg-muted/30 rounded-lg overflow-hidden",
-        isFullscreen && "fixed inset-4 z-50",
+        "relative flex flex-col bg-muted/30 rounded-lg overflow-hidden border border-border/40",
+        isFullscreen && "fixed inset-4 z-50 shadow-2xl border-border",
         className
       )}
     >
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 bg-background/50">
-        <span className="text-xs font-medium text-muted-foreground">
-          Live Preview
-        </span>
+      {/* Upper Toolbar: Title and Main Actions */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/40 bg-background/50">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-foreground/80">
+            Live Preview
+          </span>
+          {framework && (
+            <span className="px-1.5 py-0.5 rounded-md bg-primary/10 text-[10px] font-medium text-primary uppercase tracking-wider">
+              {framework}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1">
           {onRun && (
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accentTransition"
               onClick={onRun}
               title="Run preview (Ctrl+R)"
             >
-              <Play className="h-3 w-3 mr-1" />
+              <Play className="h-3.5 w-3.5 mr-1.5" />
               Run
             </Button>
           )}
+          <div className="w-px h-4 bg-border/40 mx-1" />
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
             onClick={() => setIsFullscreen(!isFullscreen)}
             title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
           >
             {isFullscreen ? (
-              <Minimize2 className="h-3 w-3" />
+              <Minimize2 className="h-3.5 w-3.5" />
             ) : (
-              <Maximize2 className="h-3 w-3" />
+              <Maximize2 className="h-3.5 w-3.5" />
             )}
           </Button>
         </div>
       </div>
 
-      <div className="relative flex-1 min-h-[300px]">
+      {/* Responsive Toolbar */}
+      <div className="flex flex-wrap items-center gap-3 px-3 py-1.5 border-b border-border/40 bg-background/30 backdrop-blur-sm">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">Dimensions:</span>
+          <Select value={selectedDevice} onValueChange={handleDeviceChange}>
+            <SelectTrigger className="h-7 w-[140px] text-xs py-0 px-2 bg-background/50 border-border/40 hover:bg-background/80 transition-colors">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DEVICES.map((device) => (
+                <SelectItem key={device.name} value={device.name} className="text-xs">
+                  <div className="flex items-center gap-2">
+                    <device.icon className="h-3 w-3 opacity-60" />
+                    {device.name}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <Input
+            value={typeof dimensions.width === "number" ? dimensions.width.toString() : customWidth}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value === "" || /^\d+$/.test(value)) {
+                setCustomWidth(value);
+              }
+            }}
+            disabled={selectedDevice !== "Responsive" && typeof currentDevice.width === "number"}
+            placeholder={selectedDevice === "Responsive" ? "W" : String(dimensions.width)}
+            className="h-7 w-14 text-xs px-1.5 text-center bg-background/50 border-border/40 focus-visible:ring-primary/20"
+          />
+          <span className="text-muted-foreground/40 text-[10px]">×</span>
+          <Input
+            value={typeof dimensions.height === "number" ? dimensions.height.toString() : customHeight}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value === "" || /^\d+$/.test(value)) {
+                setCustomHeight(value);
+              }
+            }}
+            disabled={selectedDevice !== "Responsive" && typeof currentDevice.height === "number"}
+            placeholder={selectedDevice === "Responsive" ? "H" : String(dimensions.height)}
+            className="h-7 w-14 text-xs px-1.5 text-center bg-background/50 border-border/40 focus-visible:ring-primary/20"
+          />
+        </div>
+
+        {selectedDevice !== "Responsive" && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent"
+            onClick={handleRotate}
+            title="Rotate"
+          >
+            <RotateCw className="h-3.5 w-3.5" />
+          </Button>
+        )}
+
+        <div className="w-px h-4 bg-border/40" />
+
+        <div className="flex items-center gap-2">
+          <Select value={zoom.toString()} onValueChange={(v) => setZoom(parseFloat(v))}>
+            <SelectTrigger className="h-7 w-[70px] text-xs py-0 px-2 bg-background/50 border-border/40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ZOOM_LEVELS.map((z) => (
+                <SelectItem key={z.value} value={z.value.toString()} className="text-xs">
+                  {z.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="ml-auto flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "h-7 w-7 transition-colors cursor-default",
+              isMagnifierActive ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+            )}
+            title="Magnifier (Right-click on preview to zoom 4X)"
+          >
+            <ZoomIn className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            onClick={handleReload}
+            title="Reload frame"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+
+      <div
+        ref={containerRef}
+        className={cn(
+          "relative flex-1 bg-muted/20 overflow-auto flex items-center justify-center p-4 scrollbar-hide",
+          isMagnifierActive && "cursor-none"
+        )}
+        style={{
+          // Ensure container can scroll when content is larger (like Chrome DevTools)
+          minHeight: 0,
+        }}
+        onMouseMove={(e) => {
+          if (!isMagnifierActive) return;
+          const rect = containerRef.current?.getBoundingClientRect();
+          if (rect) {
+            mouseX.set(e.clientX - rect.left);
+            mouseY.set(e.clientY - rect.top);
+          }
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          const rect = containerRef.current?.getBoundingClientRect();
+          if (rect) {
+            mouseX.set(e.clientX - rect.left);
+            mouseY.set(e.clientY - rect.top);
+            setIsMagnifierActive(true);
+          }
+        }}
+        onClick={() => {
+          if (isMagnifierActive) {
+            setIsMagnifierActive(false);
+          }
+        }}
+      >
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
+          <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10 transition-opacity">
             <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         )}
@@ -879,15 +1202,172 @@ export function LivePreview({ files, framework, className, onRun }: LivePreviewP
           </div>
         )}
 
-        <iframe
-          key={key}
-          ref={iframeRef}
-          src="/preview/frame"
-          sandbox="allow-scripts allow-same-origin"
-          onLoad={handleLoad}
-          className="w-full h-full border-0"
-          title="Live preview"
-        />
+        <div
+          style={{
+            width: typeof dimensions.width === "number" ? `${dimensions.width}px` : dimensions.width,
+            height: typeof dimensions.height === "number" ? `${dimensions.height}px` : dimensions.height,
+            // Apply visual zoom via transform (like Chrome DevTools device frame)
+            // The actual content zoom is handled via viewport meta tag
+            transform: `scale(${zoom})`,
+            transformOrigin: "top center",
+            transition: "width 0.2s ease-out, height 0.2s ease-out, transform 0.2s ease-out",
+            boxShadow: selectedDevice !== "Responsive" ? "0 25px 50px -12px rgba(0, 0, 0, 0.5)" : "none",
+            // Ensure minimum size constraints (like Chrome DevTools)
+            minWidth: typeof dimensions.width === "number" ? `${Math.max(200, dimensions.width)}px` : "200px",
+            minHeight: typeof dimensions.height === "number" ? `${Math.max(200, dimensions.height)}px` : "200px",
+          }}
+          className={cn(
+            "relative bg-background overflow-visible",
+            selectedDevice !== "Responsive" && "border border-border/50 rounded-xl"
+          )}
+        >
+          {/* Resize Handles */}
+          {selectedDevice === "Responsive" && (
+            <>
+              {/* Right handle */}
+              <motion.div
+                drag="x"
+                dragMomentum={false}
+                onDragStart={() => {
+                  // If width is empty or using container dimensions, capture current width
+                  if ((!customWidth || customWidth === "") && iframeRef.current) {
+                    const currentWidth = Math.round(iframeRef.current.offsetWidth / zoom);
+                    setCustomWidth(currentWidth.toString());
+                  }
+                }}
+                onDrag={(_, info) => {
+                  const current = parseInt(customWidth || "0") || (iframeRef.current ? Math.round(iframeRef.current.offsetWidth / zoom) : containerDimensions.width);
+                  // Adjust for zoom level when dragging
+                  const newWidth = Math.max(200, current + Math.round(info.delta.x / zoom));
+                  setCustomWidth(newWidth.toString());
+                }}
+                className="absolute -right-1 top-0 bottom-0 w-3 cursor-col-resize hover:bg-primary/20 active:bg-primary/40 z-30 flex items-center justify-center group"
+              >
+                <div className="h-12 w-1.5 bg-border/40 rounded-full group-hover:bg-primary/50 transition-colors" />
+              </motion.div>
+
+              {/* Bottom handle */}
+              <motion.div
+                drag="y"
+                dragMomentum={false}
+                onDragStart={() => {
+                  // If height is empty or using container dimensions, capture current height
+                  if ((!customHeight || customHeight === "") && iframeRef.current) {
+                    const currentHeight = Math.round(iframeRef.current.offsetHeight / zoom);
+                    setCustomHeight(currentHeight.toString());
+                  }
+                }}
+                onDrag={(_, info) => {
+                  const current = parseInt(customHeight || "0") || (iframeRef.current ? Math.round(iframeRef.current.offsetHeight / zoom) : containerDimensions.height);
+                  // Adjust for zoom level when dragging
+                  const newHeight = Math.max(200, current + Math.round(info.delta.y / zoom));
+                  setCustomHeight(newHeight.toString());
+                }}
+                className="absolute -bottom-1 left-0 right-0 h-3 cursor-row-resize hover:bg-primary/20 active:bg-primary/40 z-30 flex items-center justify-center group"
+              >
+                <div className="w-12 h-1.5 bg-border/40 rounded-full group-hover:bg-primary/50 transition-colors" />
+              </motion.div>
+
+              {/* Corner handle */}
+              <motion.div
+                drag
+                dragMomentum={false}
+                onDragStart={() => {
+                  if (iframeRef.current) {
+                    if (!customWidth || customWidth === "") {
+                      setCustomWidth(Math.round(iframeRef.current.offsetWidth / zoom).toString());
+                    }
+                    if (!customHeight || customHeight === "") {
+                      setCustomHeight(Math.round(iframeRef.current.offsetHeight / zoom).toString());
+                    }
+                  }
+                }}
+                onDrag={(_, info) => {
+                  const curW = parseInt(customWidth || "0") || (iframeRef.current ? Math.round(iframeRef.current.offsetWidth / zoom) : containerDimensions.width);
+                  const curH = parseInt(customHeight || "0") || (iframeRef.current ? Math.round(iframeRef.current.offsetHeight / zoom) : containerDimensions.height);
+                  // Adjust for zoom level when dragging
+                  setCustomWidth(Math.max(200, curW + Math.round(info.delta.x / zoom)).toString());
+                  setCustomHeight(Math.max(200, curH + Math.round(info.delta.y / zoom)).toString());
+                }}
+                className="absolute -right-2 -bottom-2 w-5 h-5 cursor-nwse-resize hover:scale-110 active:scale-95 z-30 rounded-full border-2 border-primary bg-background shadow-lg transition-transform flex items-center justify-center"
+              >
+                <div className="w-1.5 h-1.5 bg-primary rounded-full" />
+              </motion.div>
+            </>
+          )}
+
+          <iframe
+            key={key}
+            ref={iframeRef}
+            src="/preview/frame"
+            sandbox="allow-scripts allow-same-origin allow-forms"
+            // @ts-ignore - credentialless is a newer attribute that helps with COEP
+            credentialless="true"
+            onLoad={handleLoad}
+            className="border-0 relative z-10"
+            style={{
+              width: typeof dimensions.width === "number" ? `${dimensions.width}px` : "100%",
+              height: typeof dimensions.height === "number" ? `${dimensions.height}px` : "100%",
+              display: "block",
+            }}
+            title="Live preview"
+          />
+
+          {/* Magnifier Lens Overlay */}
+          <AnimatePresence>
+            {isMagnifierActive && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.5 }}
+                style={{
+                  left: lensX,
+                  top: lensY,
+                  x: "-50%",
+                  y: "-50%",
+                }}
+                className="absolute w-56 h-56 border-3 border-primary/50 rounded-full overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.5)] z-[100] pointer-events-none backdrop-blur-sm"
+              >
+                <div className="absolute inset-0 border-[12px] border-black/10 rounded-full z-20 pointer-events-none" />
+                <div
+                  className="absolute inset-0 bg-background"
+                  style={{
+                    width: dimensions.width,
+                    height: dimensions.height,
+                    transform: `scale(${zoom * 4})`,
+                    // Calculate relative position within the iframe box
+                    transformOrigin: `${mouseX.get() - ((containerRef.current?.clientWidth || 0) - (iframeRef.current?.clientWidth || 0) * zoom) / 2}px ${mouseY.get() - 16}px`,
+                    position: 'absolute',
+                    left: 0,
+                    top: 0
+                  }}
+                >
+                  <iframe
+                    src="/preview/frame"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      border: '0',
+                      pointerEvents: 'none'
+                    }}
+                    onLoad={(e) => {
+                      const frame = e.currentTarget;
+                      const win = frame.contentWindow;
+                      if (win) win.postMessage({ type: "setPreviewHtml", html: srcDoc }, window.location.origin);
+                    }}
+                  />
+                </div>
+                {/* Crosshair & Glass Effect */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30">
+                  <div className="w-full h-[1px] bg-primary/20" />
+                  <div className="h-full w-[1px] bg-primary/20 absolute" />
+                  <div className="w-3 h-3 border border-primary/40 rounded-full" />
+                  <div className="absolute top-4 right-8 w-8 h-4 bg-white/10 rounded-full blur-md rotate-[-45deg]" />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );

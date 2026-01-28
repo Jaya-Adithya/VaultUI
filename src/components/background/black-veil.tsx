@@ -17,6 +17,7 @@ uniform float uNoise;
 uniform float uScan;
 uniform float uScanFreq;
 uniform float uWarp;
+uniform float uOpacity;
 #define iTime uTime
 #define iResolution uResolution
 
@@ -69,7 +70,12 @@ void main(){
     float scanline_val=sin(gl_FragCoord.y*uScanFreq)*0.5+0.5;
     col.rgb*=1.-(scanline_val*scanline_val)*uScan;
     col.rgb+=(rand(gl_FragCoord.xy+uTime)-0.5)*uNoise;
-    gl_FragColor=vec4(clamp(col.rgb,0.0,1.0),1.0);
+    
+    // Apply opacity for transparent effect - use alpha channel for transparency
+    // Keep RGB values bright for better visual effect with backdrop blur
+    col.a = uOpacity;
+    
+    gl_FragColor=vec4(clamp(col.rgb,0.0,1.0), clamp(col.a, 0.0, 1.0));
 }
 `;
 
@@ -81,28 +87,45 @@ type Props = {
   scanlineFrequency?: number;
   warpAmount?: number;
   resolutionScale?: number;
+  opacity?: number;
 };
 
-export default function DarkVeil({
+export default function BlackVeil({
   hueShift = 0,
-  noiseIntensity = 0,
-  scanlineIntensity = 0,
-  speed = 0.5,
-  scanlineFrequency = 0,
-  warpAmount = 0,
-  resolutionScale = 1
+  noiseIntensity = 0.015,
+  scanlineIntensity = 0.08,
+  speed = 0.4,
+  scanlineFrequency = 2,
+  warpAmount = 0.25,
+  resolutionScale = 1,
+  opacity = 0.15
 }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
+  
   useEffect(() => {
-    const canvas = ref.current as HTMLCanvasElement;
+    const canvas = ref.current;
+    if (!canvas) return;
+    
     const parent = canvas.parentElement as HTMLElement;
+    if (!parent) return;
 
+    // Performance optimization: Limit DPR for better performance
+    const dpr = Math.min(window.devicePixelRatio, 2);
+    
     const renderer = new Renderer({
-      dpr: Math.min(window.devicePixelRatio, 2),
-      canvas
+      dpr,
+      canvas,
+      alpha: true, // Transparent background for backdrop blur
+      antialias: true,
+      powerPreference: "high-performance"
     });
 
     const gl = renderer.gl;
+    
+    // Enable performance optimizations
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    
     const geometry = new Triangle(gl);
 
     const program = new Program(gl, {
@@ -115,48 +138,83 @@ export default function DarkVeil({
         uNoise: { value: noiseIntensity },
         uScan: { value: scanlineIntensity },
         uScanFreq: { value: scanlineFrequency },
-        uWarp: { value: warpAmount }
+        uWarp: { value: warpAmount },
+        uOpacity: { value: opacity }
       }
     });
 
     const mesh = new Mesh(gl, { geometry, program });
 
+    let resizeTimer: ReturnType<typeof setTimeout>;
     const resize = () => {
-      const w = parent.clientWidth,
-        h = parent.clientHeight;
-      renderer.setSize(w * resolutionScale, h * resolutionScale);
-      program.uniforms.uResolution.value.set(w, h);
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        const w = parent.clientWidth;
+        const h = parent.clientHeight;
+        if (w > 0 && h > 0) {
+          renderer.setSize(w * resolutionScale, h * resolutionScale);
+          program.uniforms.uResolution.value.set(w, h);
+        }
+      }, 100); // Debounce resize for performance
     };
 
-    window.addEventListener('resize', resize);
+    // Use ResizeObserver for better performance than window resize
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(parent);
+    
+    // Initial resize
     resize();
 
     const start = performance.now();
-    let frame = 0;
+    let frameId: number;
+    let lastTime = 0;
+    const targetFPS = 60;
+    const frameInterval = 1000 / targetFPS;
 
-    const loop = () => {
-      program.uniforms.uTime.value = ((performance.now() - start) / 1000) * speed;
-      program.uniforms.uHueShift.value = hueShift;
-      program.uniforms.uNoise.value = noiseIntensity;
-      program.uniforms.uScan.value = scanlineIntensity;
-      program.uniforms.uScanFreq.value = scanlineFrequency;
-      program.uniforms.uWarp.value = warpAmount;
-      renderer.render({ scene: mesh });
-      frame = requestAnimationFrame(loop);
+    const loop = (currentTime: number) => {
+      // Throttle to target FPS for consistent performance
+      const elapsed = currentTime - lastTime;
+      
+      if (elapsed >= frameInterval) {
+        const time = ((currentTime - start) / 1000) * speed;
+        program.uniforms.uTime.value = time;
+        program.uniforms.uHueShift.value = hueShift;
+        program.uniforms.uNoise.value = noiseIntensity;
+        program.uniforms.uScan.value = scanlineIntensity;
+        program.uniforms.uScanFreq.value = scanlineFrequency;
+        program.uniforms.uWarp.value = warpAmount;
+        program.uniforms.uOpacity.value = opacity;
+        
+        renderer.render({ scene: mesh });
+        lastTime = currentTime - (elapsed % frameInterval);
+      }
+      
+      frameId = requestAnimationFrame(loop);
     };
 
-    loop();
+    frameId = requestAnimationFrame(loop);
 
     return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(frameId);
+      resizeObserver.disconnect();
+      clearTimeout(resizeTimer);
+      // Cleanup WebGL resources
+      gl.deleteProgram(program.program);
+      gl.deleteShader(program.vertexShader);
+      gl.deleteShader(program.fragmentShader);
     };
-  }, [hueShift, noiseIntensity, scanlineIntensity, speed, scanlineFrequency, warpAmount, resolutionScale]);
-  return <canvas ref={ref} className="w-full h-full block" />;
+  }, [hueShift, noiseIntensity, scanlineIntensity, speed, scanlineFrequency, warpAmount, resolutionScale, opacity]);
+  
+  return (
+    <canvas 
+      ref={ref} 
+      className="w-full h-full block"
+      style={{
+        willChange: 'contents',
+        transform: 'translateZ(0)', // Force GPU acceleration
+        backfaceVisibility: 'hidden'
+      }}
+    />
+  );
 }
-
-
-
-
-
 

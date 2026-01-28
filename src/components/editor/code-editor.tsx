@@ -1,11 +1,14 @@
 "use client";
 
-import { useRef, useCallback } from "react";
-import Editor, { OnMount, OnChange, loader } from "@monaco-editor/react";
+import { useRef, useCallback, lazy, Suspense } from "react";
+import type { OnMount, OnChange } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 import type * as monaco from "monaco-editor";
 import { cn } from "@/lib/utils";
 import type { Language } from "@/lib/detect-framework";
+
+// Dynamically import Monaco Editor to reduce initial bundle size
+const Editor = lazy(() => import("@monaco-editor/react").then((mod) => ({ default: mod.default })));
 
 interface CodeEditorProps {
   value: string;
@@ -28,10 +31,12 @@ const languageMap: Record<Language, string> = {
 // Configure Monaco loader to use local or specific CDN path
 // and ensure it works with COEP (Cross-Origin-Embedder-Policy)
 if (typeof window !== "undefined") {
-  loader.config({
-    paths: {
-      vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs",
-    },
+  import("@monaco-editor/react").then(({ loader }) => {
+    loader.config({
+      paths: {
+        vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs",
+      },
+    });
   });
 }
 
@@ -228,31 +233,39 @@ export function CodeEditor({
 
   return (
     <div className={cn("relative h-full", className)}>
-      <Editor
-        height="100%"
-        language={languageMap[language] || "plaintext"}
-        value={value}
-        onChange={handleChange}
-        onMount={handleEditorMount}
-        theme="vs-dark"
-        options={{
-          readOnly,
-          minimap: { enabled: false },
-          scrollBeyondLastLine: false,
-          fontSize: 14,
-          lineNumbers: "on",
-          renderLineHighlight: "line",
-          tabSize: 2,
-          wordWrap: "on",
-          automaticLayout: true,
-          padding: { top: 16, bottom: 16 },
-        }}
-        loading={
+      <Suspense
+        fallback={
           <div className="flex items-center justify-center h-full">
             <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         }
-      />
+      >
+        <Editor
+          height="100%"
+          language={languageMap[language] || "plaintext"}
+          value={value}
+          onChange={handleChange}
+          onMount={handleEditorMount}
+          theme="vs-dark"
+          options={{
+            readOnly,
+            minimap: { enabled: false },
+            scrollBeyondLastLine: false,
+            fontSize: 14,
+            lineNumbers: "on",
+            renderLineHighlight: "line",
+            tabSize: 2,
+            wordWrap: "on",
+            automaticLayout: true,
+            padding: { top: 16, bottom: 16 },
+          }}
+          loading={
+            <div className="flex items-center justify-center h-full">
+              <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          }
+        />
+      </Suspense>
     </div>
   );
 }
