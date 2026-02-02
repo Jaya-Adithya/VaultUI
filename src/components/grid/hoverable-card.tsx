@@ -213,7 +213,7 @@ export function HoverableCard({
     setIsSavingCover(true);
     updateCoverMutation.mutate({
       id,
-      coverImage: coverImageInput.trim() || null,
+      coverImage: coverImageInput.trim() || undefined,
     });
   }, [id, coverImageInput, updateCoverMutation]);
 
