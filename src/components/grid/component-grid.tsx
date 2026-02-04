@@ -26,12 +26,14 @@ interface ComponentGridProps {
   components: Component[];
   viewMode: "grid" | "list";
   isLoading?: boolean;
+  selectedCollection?: string | null;
 }
 
 export function ComponentGrid({
   components,
   viewMode,
   isLoading,
+  selectedCollection,
 }: ComponentGridProps) {
   if (isLoading) {
     return (
@@ -95,6 +97,7 @@ export function ComponentGrid({
             files={component.versions[0]?.files ?? []}
             status={component.status}
             coverImage={component.coverImage}
+            selectedCollection={selectedCollection}
           />
         ))}
       </div>

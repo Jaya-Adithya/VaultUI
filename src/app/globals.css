@@ -221,4 +221,32 @@
   .dark body {
     background-color: oklch(0.145 0 0);
   }
+
+  /* Water progress wave animations */
+  @keyframes water-wave-horizontal {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes water-wave-vertical {
+    0%,
+    100% {
+      transform: translateY(0) scaleY(1);
+    }
+    50% {
+      transform: translateY(-2px) scaleY(1.1);
+    }
+  }
+
+  .water-wave-horizontal {
+    animation: water-wave-horizontal 3s linear infinite;
+  }
+
+  .water-wave-vertical {
+    animation: water-wave-vertical 2s ease-in-out infinite;
+  }
 }

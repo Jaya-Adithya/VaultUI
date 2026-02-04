@@ -10,6 +10,7 @@ import {
   Edit,
   Trash2,
   FolderPlus,
+  FolderMinus,
   FileEdit,
   Image as ImageIcon,
   X,
@@ -73,6 +74,7 @@ interface HoverableCardProps {
   files: FileData[];
   status: string;
   coverImage?: string | null;
+  selectedCollection?: string | null;
 }
 
 const HOVER_DELAY = 200; // ms
@@ -85,6 +87,7 @@ export function HoverableCard({
   files,
   status,
   coverImage,
+  selectedCollection,
 }: HoverableCardProps) {
   const router = useRouter();
   const { setActivePreview, isPreviewActive } = useHoverPreview();
@@ -106,9 +109,11 @@ export function HoverableCard({
   const isActive = isPreviewActive(id);
 
   const utils = trpc.useUtils();
-  const { data: collections = [] } = trpc.collection.list.useQuery();
+  const { data: collections = [], isLoading: collectionsLoading } = trpc.collection.list.useQuery();
   const { data: component } = trpc.component.getById.useQuery(id, {
     enabled: isMenuOpen, // Only fetch when menu is open (for duplication and collection check)
+    // Refetch when menu opens to get latest collection associations
+    refetchOnMount: true,
   });
 
   const deleteMutation = trpc.component.softDelete.useMutation({
@@ -125,9 +130,40 @@ export function HoverableCard({
   });
 
   const addToCollectionMutation = trpc.collection.addComponent.useMutation({
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
+      // Invalidate queries to refresh data
       utils.component.list.invalidate();
       utils.collection.list.invalidate();
+      // Refetch component data to update available collections list
+      utils.component.getById.invalidate(id);
+      // Close the menu after successful add
+      setIsMenuOpen(false);
+      // Log success for debugging
+      console.log("Successfully added component to collection", {
+        componentId: variables.componentId,
+        collectionId: variables.collectionId,
+      });
+    },
+    onError: (error) => {
+      // Log error for debugging
+      console.error("Failed to add component to collection:", error);
+      // Error will be displayed via mutation.error in the UI if needed
+    },
+  });
+
+  const removeFromCollectionMutation = trpc.collection.removeComponent.useMutation({
+    onSuccess: () => {
+      // Invalidate queries to refresh data
+      utils.component.list.invalidate();
+      utils.collection.list.invalidate();
+      // Refetch component data to update available collections list
+      utils.component.getById.invalidate(id);
+      // Close the menu after successful remove
+      setIsMenuOpen(false);
+    },
+    onError: (error) => {
+      // Log error for debugging
+      console.error("Failed to remove component from collection:", error);
     },
   });
 
@@ -188,6 +224,14 @@ export function HoverableCard({
     [id, addToCollectionMutation]
   );
 
+  const handleRemoveFromCollection = useCallback(() => {
+    if (!selectedCollection) return;
+    removeFromCollectionMutation.mutate({
+      componentId: id,
+      collectionId: selectedCollection,
+    });
+  }, [id, selectedCollection, removeFromCollectionMutation]);
+
   const handleDelete = useCallback(() => {
     deleteMutation.mutate(id);
   }, [id, deleteMutation]);
@@ -213,7 +257,7 @@ export function HoverableCard({
     setIsSavingCover(true);
     updateCoverMutation.mutate({
       id,
-      coverImage: coverImageInput.trim() || null,
+      coverImage: coverImageInput.trim() || undefined,
     });
   }, [id, coverImageInput, updateCoverMutation]);
 
@@ -238,12 +282,33 @@ export function HoverableCard({
     }
   }, [isCoverDialogOpen, coverImage]);
 
+  // Filter out collections that the component is already in
+  // Handle case where component data might not be loaded yet
   const availableCollections = collections.filter(
-    (collection: { id: string }) =>
-      !component?.collections.some(
+    (collection: { id: string }) => {
+      // If component data is not loaded yet, show all collections
+      // The backend will handle duplicate prevention
+      if (!component) {
+        return true;
+      }
+      // Filter out collections the component is already in
+      return !component.collections.some(
         (c: { collectionId: string }) => c.collectionId === collection.id
-      )
+      );
+    }
   );
+
+  // Debug logging when menu opens
+  useEffect(() => {
+    if (isMenuOpen) {
+      console.log("[HoverableCard] Menu opened", {
+        collectionsCount: collections.length,
+        availableCount: availableCollections.length,
+        componentLoaded: !!component,
+        componentCollections: component?.collections?.length || 0,
+      });
+    }
+  }, [isMenuOpen, collections.length, availableCollections.length, component]);
 
   const handleMouseEnter = useCallback(() => {
     setIsHovering(true);
@@ -332,10 +397,15 @@ export function HoverableCard({
                       ref={menuButtonRef}
                       variant="ghost"
                       size="icon-sm"
-                      className="h-7 w-7 bg-background/80 backdrop-blur-sm hover:bg-background/90 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                      className={cn(
+                        "h-7 w-7 bg-background/80 backdrop-blur-sm hover:bg-background/90 transition-opacity shadow-sm",
+                        // Always show when menu is open, show on hover otherwise
+                        isMenuOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                      )}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
+                        setIsMenuOpen(true);
                       }}
                       aria-label="Component options"
                     >
@@ -349,49 +419,84 @@ export function HoverableCard({
                       e.stopPropagation();
                     }}
                   >
+                    {/* Always show "Add to Collection" option */}
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger>
                         <FolderPlus className="h-4 w-4" />
                         <span>Add to Collection</span>
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent>
-                        {availableCollections.length === 0 ? (
+                        {collections.length === 0 ? (
                           <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                            No available collections
+                            No collections available. Create one first.
+                          </div>
+                        ) : availableCollections.length === 0 ? (
+                          <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                            Component is already in all collections
                           </div>
                         ) : (
-                        availableCollections.map((collection: { id: string; name: string }) => {
-                            const isAdding =
-                              addToCollectionMutation.isPending &&
-                              addToCollectionMutation.variables?.collectionId ===
-                              collection.id;
-                            return (
-                              <DropdownMenuItem
-                                key={collection.id}
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  handleAddToCollection(collection.id);
-                                }}
-                                disabled={isAdding}
-                              >
-                                {isAdding ? (
-                                  <>
-                                    <span className="h-4 w-4 animate-spin">⟳</span>
-                                    <span>Adding...</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <span className="h-4 w-4" />
-                                    <span>{collection.name}</span>
-                                  </>
-                                )}
-                              </DropdownMenuItem>
-                            );
-                          })
+                          <>
+                            {availableCollections.map((collection: { id: string; name: string }) => {
+                              const isAdding =
+                                addToCollectionMutation.isPending &&
+                                addToCollectionMutation.variables?.collectionId ===
+                                collection.id;
+                              return (
+                                <DropdownMenuItem
+                                  key={collection.id}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleAddToCollection(collection.id);
+                                  }}
+                                  disabled={isAdding}
+                                >
+                                  {isAdding ? (
+                                    <>
+                                      <span className="h-4 w-4 animate-spin">⟳</span>
+                                      <span>Adding...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="h-4 w-4" />
+                                      <span>{collection.name}</span>
+                                    </>
+                                  )}
+                                </DropdownMenuItem>
+                              );
+                            })}
+                            {addToCollectionMutation.error && (
+                              <div className="px-2 py-1.5 text-xs text-destructive border-t border-border/50">
+                                {addToCollectionMutation.error.message || "Failed to add to collection"}
+                              </div>
+                            )}
+                          </>
                         )}
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
+
+                    {selectedCollection && (
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemoveFromCollection();
+                        }}
+                        disabled={removeFromCollectionMutation.isPending}
+                      >
+                        {removeFromCollectionMutation.isPending ? (
+                          <>
+                            <span className="h-4 w-4 animate-spin">⟳</span>
+                            <span>Removing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <FolderMinus className="h-4 w-4" />
+                            <span>Remove from Collection</span>
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                    )}
 
                     <DropdownMenuItem
                       onClick={(e) => {

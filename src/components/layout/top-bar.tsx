@@ -11,6 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { UserProfile } from "@/components/auth/user-profile";
 
 interface TopBarProps {
   onSearch: (query: string) => void;
@@ -60,6 +61,7 @@ export function TopBar({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <UserProfile />
           <ThemeToggle />
 
           <TooltipProvider>

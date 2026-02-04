@@ -463,10 +463,11 @@ export function generatePreviewRuntime(
       } catch (e) {
         const rootElement = document.getElementById("root");
         if (rootElement) {
+          const message = (e && (e.stack || e.message)) ? (e.stack || e.message) : String(e);
           rootElement.innerHTML = \`
             <div style="color:#ef4444;padding:16px;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;font-size:12px;white-space:pre-wrap;background:#1a1a1a;border:1px solid #ef4444;border-radius:8px;">
               <div style="font-weight:600;margin-bottom:8px;color:#fca5a5;">❌ Error</div>
-              <div style="color:#fca5a5;">\${message}\${extra}\${helpfulTips}</div>
+              <div style="color:#fca5a5;">\${message}</div>
               <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(239,68,68,0.3);opacity:0.8;">
                 Note: Universal preview attempts to load packages automatically. If a package fails to load, it might not have a browser-compatible ESM build available on esm.sh.
               </div>
@@ -513,7 +514,7 @@ function generateDependencyLoader(imports: string[], allowAutoDetect: boolean = 
       const subpath = imp.substring(basePackage.length + 1);
 
       // For gsap subpath imports, load them from esm.sh
-      if (basePackage === 'gsap') {
+      if (basePackage === 'gsap' || basePackage === 'motion') {
         const importName = imp.replace(/[^a-zA-Z0-9]/g, "_");
         // Load the subpath import from esm.sh
         // Note: gsap/ScrollTrigger exports ScrollTrigger as a named export, not default
@@ -525,7 +526,7 @@ function generateDependencyLoader(imports: string[], allowAutoDetect: boolean = 
         loaders.push(`window.${importName} = ${importName}Module;`);
         autoDetected.push(imp);
         // #region agent log
-        fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'preview-runtime-generator.ts:generateDependencyLoader', message: 'Loading gsap subpath import', data: { imp, basePackage, subpath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'B' }) }).catch(() => { });
+        fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'preview-runtime-generator.ts:generateDependencyLoader', message: 'Loading subpath import', data: { imp, basePackage, subpath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'B' }) }).catch(() => { });
         // #endregion
         return;
       }
@@ -627,8 +628,8 @@ function generatePreviewWrapperSource(
     // Handle subpath imports (e.g., "gsap/ScrollTrigger")
     if (mod.includes('/') && !mod.startsWith('@') && !mod.startsWith('./') && !mod.startsWith('../')) {
       const basePackage = mod.split('/')[0];
-      if (basePackage === 'gsap') {
-        // GSAP subpath imports are loaded separately
+      if (basePackage === 'gsap' || basePackage === 'motion') {
+        // GSAP and Motion subpath imports are loaded separately
         moduleToDepVar[mod] = mod.replace(/[^a-zA-Z0-9]/g, "_");
       }
       // Other subpath imports (like next/image) are handled separately
@@ -809,8 +810,8 @@ function generatePreviewWrapperSource(
       continue;
     }
 
-    // Handle GSAP subpath imports (e.g., "gsap/ScrollTrigger")
-    if (mod.startsWith("gsap/")) {
+    // Handle GSAP and Motion subpath imports
+    if (mod.startsWith("gsap/") || mod.startsWith("motion/")) {
       const depVar = mod.replace(/[^a-zA-Z0-9]/g, "_");
       // #region agent log
       fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'preview-runtime-generator.ts:generatePreviewWrapperSource', message: 'Processing gsap subpath import', data: { mod, depVar, hasModuleToDepVar: !!moduleToDepVar[mod], impKind: imp.kind, hasNamed: !!imp.named, namedCount: imp.named?.length, named: imp.named }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'B' }) }).catch(() => { });

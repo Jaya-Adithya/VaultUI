@@ -9,18 +9,18 @@ datasource db {
 }
 
 model Component {
-  id                  String    @id @default(uuid())
-  title               String
-  description         String?
-  framework           String    // react | next | html | css | js | multi | other
-  language            String    // tsx | jsx | html | css | js | multi
-  status              String    @default("experiment") // experiment | ready
-  isRenderable        Boolean   @default(true)
+  id                    String    @id @default(uuid())
+  title                 String
+  description           String?
+  framework             String // react | next | html | css | js | multi | other
+  language              String // tsx | jsx | html | css | js | multi
+  status                String    @default("experiment") // experiment | ready
+  isRenderable          Boolean   @default(true)
   packageInstallCommand String? // Optional command to install packages (e.g., npx shadcn-vue@latest add ...)
-  coverImage          String?   // Optional URL for cover image
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  deletedAt          DateTime?
+  coverImage            String? // Optional URL for cover image
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  deletedAt             DateTime?
 
   versions    ComponentVersion[]
   collections ComponentCollection[]
@@ -32,8 +32,8 @@ model ComponentVersion {
   version     Int
   createdAt   DateTime @default(now())
 
-  component   Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
-  files       ComponentFile[]
+  component Component       @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  files     ComponentFile[]
 
   @@index([componentId])
 }
@@ -47,18 +47,18 @@ model ComponentFile {
   code      String
   order     Int    @default(0) // For ordering tabs
 
-  version   ComponentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  version ComponentVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
   @@index([versionId])
 }
 
 model Collection {
-  id        String       @id @default(uuid())
-  name      String
-  slug      String       @unique
-  parentId  String?
-  parent    Collection?  @relation("CollectionTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children  Collection[]  @relation("CollectionTree")
+  id       String       @id @default(uuid())
+  name     String
+  slug     String       @unique
+  parentId String?
+  parent   Collection?  @relation("CollectionTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children Collection[] @relation("CollectionTree")
 
   components ComponentCollection[]
 }
@@ -71,4 +71,57 @@ model ComponentCollection {
   collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
 
   @@id([componentId, collectionId])
+}
+
+// NextAuth.js models
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model User {
+  id            String    @id @default(uuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String? // Hashed password for credentials provider
+  role          String    @default("user") // user | developer | superadmin
+  accounts      Account[]
+  sessions      Session[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
 }
