@@ -7,6 +7,7 @@ import superjson from "superjson";
 import { trpc } from "@/lib/trpc";
 import { ThemeProvider } from "@/components/theme-provider";
 import { BackgroundWrapper } from "@/components/background/background-wrapper";
+import { SessionProvider } from "next-auth/react";
 
 function getBaseUrl() {
   if (typeof window !== "undefined") return "";
@@ -39,16 +40,18 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem
-        >
-          <BackgroundWrapper>{children}</BackgroundWrapper>
-        </ThemeProvider>
-      </QueryClientProvider>
-    </trpc.Provider>
+    <SessionProvider>
+      <trpc.Provider client={trpcClient} queryClient={queryClient}>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="dark"
+            enableSystem
+          >
+            <BackgroundWrapper>{children}</BackgroundWrapper>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </trpc.Provider>
+    </SessionProvider>
   );
 }

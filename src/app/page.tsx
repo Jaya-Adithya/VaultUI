@@ -95,6 +95,7 @@ export default function HomePage() {
             components={components ?? []}
             viewMode={viewMode}
             isLoading={isLoading}
+            selectedCollection={selectedCollection}
           />
         </main>
       </div>

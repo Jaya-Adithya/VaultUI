@@ -4,6 +4,7 @@ import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import type { Framework } from "@/lib/detect-framework";
 import { generatePreviewRuntime } from "@/lib/preview-runtime-generator";
+import { WaterProgress } from "@/components/ui/water-progress";
 
 interface FileData {
   filename: string;
@@ -571,7 +572,7 @@ export function StaticThumbnail({
     >
       {!isLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
-          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <WaterProgress size={24} strokeWidth={2} duration={2000} />
         </div>
       )}
       <iframe
