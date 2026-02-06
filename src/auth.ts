@@ -15,6 +15,7 @@ if (process.env.NODE_ENV === "production" && !process.env.AUTH_SECRET) {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db) as Adapter,
+  trustHost: true, // Required on Vercel so callback URL is built from request host
   session: {
     strategy: "jwt", // Use JWT for middleware compatibility
   },

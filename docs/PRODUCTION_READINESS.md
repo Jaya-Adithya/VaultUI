@@ -84,8 +84,22 @@ This document summarizes production-oriented checks, fixes applied, and recommen
 ## Environment Variables (production)
 
 - **Required:** `AUTH_SECRET`, `DATABASE_URL`, `DIRECT_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
-- **Optional:** `NEXTAUTH_URL` (usually inferred)
+- **Required for Google sign-in in production:** `NEXTAUTH_URL` — set to your app’s public URL (e.g. `https://your-app.vercel.app`) so the OAuth redirect URI matches. If missing, you may see **Error 400: redirect_uri_mismatch**.
 - Set these in your hosting platform (e.g. Vercel) and never commit real values.
+
+### Fixing Google OAuth "redirect_uri_mismatch" (Error 400)
+
+1. **Set NEXTAUTH_URL on Vercel**  
+   In the project → Settings → Environment Variables, add:
+   - `NEXTAUTH_URL` = `https://<your-vercel-domain>` (e.g. `https://vault-ui-xxx.vercel.app`)  
+   No trailing slash. Redeploy after adding.
+
+2. **Add the redirect URI in Google Cloud Console**  
+   - Go to [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials.
+   - Open your **OAuth 2.0 Client ID** (Web application).
+   - Under **Authorized redirect URIs**, add exactly:
+     - `https://<your-vercel-domain>/api/auth/callback/google`
+   - Save. The URI must match exactly (protocol, host, path, no trailing slash).
 
 ---
 
