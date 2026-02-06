@@ -12,6 +12,15 @@ if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
 if (process.env.NODE_ENV === "production" && !process.env.AUTH_SECRET) {
   throw new Error("AUTH_SECRET is required in production");
 }
+// Required in production so Google OAuth redirect_uri matches exactly what you added in Google Console
+if (process.env.NODE_ENV === "production" && !process.env.NEXTAUTH_URL) {
+  throw new Error(
+    "NEXTAUTH_URL is required in production. Set it to https://vaultui.vercel.app (no trailing slash) in Vercel → Settings → Environment Variables."
+  );
+}
+if (process.env.NEXTAUTH_URL?.endsWith("/")) {
+  throw new Error("NEXTAUTH_URL must not have a trailing slash.");
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db) as Adapter,
