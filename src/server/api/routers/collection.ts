@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import { createTRPCRouter, publicProcedure, protectedProcedure } from "@/server/api/trpc";
 
 export const collectionRouter = createTRPCRouter({
-  create: publicProcedure
+  create: protectedProcedure
     .input(
       z.object({
         name: z.string().min(1),
@@ -76,7 +76,7 @@ export const collectionRouter = createTRPCRouter({
     return collection;
   }),
 
-  update: publicProcedure
+  update: protectedProcedure
     .input(
       z.object({
         id: z.string(),
@@ -96,7 +96,7 @@ export const collectionRouter = createTRPCRouter({
       return collection;
     }),
 
-  delete: publicProcedure.input(z.string()).mutation(async ({ ctx, input }) => {
+  delete: protectedProcedure.input(z.string()).mutation(async ({ ctx, input }) => {
     // First remove all component associations
     await ctx.db.componentCollection.deleteMany({
       where: { collectionId: input },
@@ -110,7 +110,7 @@ export const collectionRouter = createTRPCRouter({
     return collection;
   }),
 
-  addComponent: publicProcedure
+  addComponent: protectedProcedure
     .input(
       z.object({
         collectionId: z.string(),
@@ -168,7 +168,7 @@ export const collectionRouter = createTRPCRouter({
       return link;
     }),
 
-  removeComponent: publicProcedure
+  removeComponent: protectedProcedure
     .input(
       z.object({
         collectionId: z.string(),

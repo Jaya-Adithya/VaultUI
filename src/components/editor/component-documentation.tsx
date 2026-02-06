@@ -40,13 +40,11 @@ export function ComponentDocumentation({
     const props: PropInfo[] = [];
     
     // Try to find props interface/type (handle multiline with nested braces)
-    // Match interface ComponentNameProps { ... } or type ComponentNameProps = { ... }
-    const interfacePattern = /interface\s+(\w+Props)\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/s;
-    const typePattern = /type\s+(\w+Props)\s*=\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/s;
-    
+    // No /s flag (ES2018+) - [^{}] in the pattern already matches newlines
+    const interfacePattern = /interface\s+(\w+Props)\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/;
+    const typePattern = /type\s+(\w+Props)\s*=\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/;
     const interfaceMatch = code.match(interfacePattern);
     const typeMatch = code.match(typePattern);
-    
     if (interfaceMatch || typeMatch) {
       const propsContent = (interfaceMatch?.[2] || typeMatch?.[2] || "").trim();
       
@@ -432,7 +430,7 @@ import ${name} from './${name}.vue'
           <div className="h-full">
             <CodeEditor
               value={currentUsageExample}
-              onChange={isEditingUsage ? setEditedUsageExample : undefined}
+              onChange={isEditingUsage ? (value: string) => setEditedUsageExample(value) : () => {}}
               language={usageLanguage}
               readOnly={!isEditingUsage}
             />

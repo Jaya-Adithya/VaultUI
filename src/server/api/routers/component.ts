@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import { createTRPCRouter, publicProcedure, protectedProcedure } from "@/server/api/trpc";
 
 // Schema for a single file
 const fileSchema = z.object({
@@ -10,7 +10,7 @@ const fileSchema = z.object({
 });
 
 export const componentRouter = createTRPCRouter({
-  create: publicProcedure
+  create: protectedProcedure
     .input(
       z.object({
         title: z.string().min(1),
@@ -164,7 +164,7 @@ export const componentRouter = createTRPCRouter({
     return component;
   }),
 
-  update: publicProcedure
+  update: protectedProcedure
     .input(
       z.object({
         id: z.string(),
@@ -195,7 +195,7 @@ export const componentRouter = createTRPCRouter({
       }
     }),
 
-  softDelete: publicProcedure
+  softDelete: protectedProcedure
     .input(z.string())
     .mutation(async ({ ctx, input }) => {
       const component = await ctx.db.component.update({
@@ -206,7 +206,7 @@ export const componentRouter = createTRPCRouter({
       return component;
     }),
 
-  restore: publicProcedure.input(z.string()).mutation(async ({ ctx, input }) => {
+  restore: protectedProcedure.input(z.string()).mutation(async ({ ctx, input }) => {
     const component = await ctx.db.component.update({
       where: { id: input },
       data: { deletedAt: null },

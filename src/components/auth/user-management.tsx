@@ -61,7 +61,7 @@ const createUserSchema = z.object({
         "Email must be from @position2.com domain"
     ),
     password: z.string().min(8, "Password must be at least 8 characters"),
-    role: z.enum(["user", "developer", "superadmin"]).default("user"),
+    role: z.enum(["user", "developer", "superadmin"]),
 });
 
 type CreateUserForm = z.infer<typeof createUserSchema>;

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import { createTRPCRouter, publicProcedure, protectedProcedure } from "@/server/api/trpc";
 
 // Schema for a single file
 const fileSchema = z.object({
@@ -10,7 +10,7 @@ const fileSchema = z.object({
 });
 
 export const versionRouter = createTRPCRouter({
-  add: publicProcedure
+  add: protectedProcedure
     .input(
       z.object({
         componentId: z.string(),
@@ -97,113 +97,59 @@ export const versionRouter = createTRPCRouter({
     return version;
   }),
 
-  delete: publicProcedure.input(z.string()).mutation(async ({ ctx, input }) => {
+  delete: protectedProcedure.input(z.string()).mutation(async ({ ctx, input }) => {
+    const isDev = process.env.NODE_ENV === "development";
     try {
-      console.log("[Version Delete Server] ========== DELETE MUTATION CALLED ==========");
-      console.log("[Version Delete Server] Input version ID:", input);
-      console.log("[Version Delete Server] Input type:", typeof input);
-      console.log("[Version Delete Server] Input length:", input?.length);
-      
-      // Get the version to check if it's the only one
-      console.log("[Version Delete Server] Fetching version from database...");
       const version = await ctx.db.componentVersion.findUnique({
         where: { id: input },
         include: {
           component: {
             include: {
-              versions: {
-                orderBy: { version: "asc" },
-              },
+              versions: { orderBy: { version: "asc" } },
             },
           },
         },
       });
 
-      console.log("[Version Delete Server] Version query result:", version ? "Found" : "Not found");
-      
       if (!version) {
-        console.error("[Version Delete Server] ❌ Version not found for ID:", input);
+        if (isDev) console.error("[Version Delete] Version not found:", input);
         throw new Error("Version not found");
       }
 
-      console.log("[Version Delete Server] ✅ Version found:");
-      console.log("[Version Delete Server]   - Version ID:", version.id);
-      console.log("[Version Delete Server]   - Version number:", version.version);
-      console.log("[Version Delete Server]   - Component ID:", version.componentId);
-      console.log("[Version Delete Server]   - Total versions:", version.component.versions.length);
-      console.log("[Version Delete Server]   - All version numbers:", version.component.versions.map(v => v.version));
-
-      // Don't allow deleting if it's the only version
       if (version.component.versions.length === 1) {
-        console.error("[Version Delete Server] ❌ Cannot delete the only version");
+        if (isDev) console.error("[Version Delete] Cannot delete the only version");
         throw new Error("Cannot delete the only version of a component");
       }
 
       const componentId = version.componentId;
-      console.log("[Version Delete Server] Starting transaction for component:", componentId);
 
-      // Perform deletion and renumbering in a transaction
       await ctx.db.$transaction(async (tx) => {
-        console.log("[Version Delete Server] [Transaction] Deleting version:", input);
-        
-        // Delete the version (files will be cascade deleted)
-        const deleteResult = await tx.componentVersion.delete({
-          where: { id: input },
-        });
-        console.log("[Version Delete Server] [Transaction] Delete result:", deleteResult);
-
-        // Renumber all remaining versions starting from 1
-        // Get all remaining versions ordered by their current version number
-        console.log("[Version Delete Server] [Transaction] Fetching remaining versions...");
+        await tx.componentVersion.delete({ where: { id: input } });
         const remainingVersions = await tx.componentVersion.findMany({
           where: { componentId },
           orderBy: { version: "asc" },
         });
-
-        console.log("[Version Delete Server] [Transaction] Remaining versions count:", remainingVersions.length);
-        console.log("[Version Delete Server] [Transaction] Remaining version IDs:", remainingVersions.map(v => ({ id: v.id, version: v.version })));
-
-        // Update each version to have sequential numbers starting from 1
         for (let i = 0; i < remainingVersions.length; i++) {
-          const newVersionNumber = i + 1;
           const currentVersion = remainingVersions[i]!;
-          console.log(`[Version Delete Server] [Transaction] Processing version ${i + 1}/${remainingVersions.length}:`, {
-            id: currentVersion.id,
-            currentVersion: currentVersion.version,
-            newVersion: newVersionNumber,
-            needsUpdate: currentVersion.version !== newVersionNumber,
-          });
-          
+          const newVersionNumber = i + 1;
           if (currentVersion.version !== newVersionNumber) {
-            console.log(`[Version Delete Server] [Transaction] ⚙️ Renumbering version ${currentVersion.version} to ${newVersionNumber}`);
-            const updateResult = await tx.componentVersion.update({
+            await tx.componentVersion.update({
               where: { id: currentVersion.id },
               data: { version: newVersionNumber },
             });
-            console.log(`[Version Delete Server] [Transaction] ✅ Updated version ${currentVersion.id} to version ${newVersionNumber}`);
-          } else {
-            console.log(`[Version Delete Server] [Transaction] ⏭️ Skipping version ${currentVersion.id} (already at version ${newVersionNumber})`);
           }
         }
-
-        // Update component's updatedAt
-        console.log("[Version Delete Server] [Transaction] Updating component updatedAt...");
         await tx.component.update({
           where: { id: componentId },
           data: { updatedAt: new Date() },
         });
-        console.log("[Version Delete Server] [Transaction] ✅ Component updatedAt set");
       });
 
-      console.log("[Version Delete Server] ✅ Transaction completed successfully");
-      console.log("[Version Delete Server] ========== DELETE MUTATION SUCCESS ==========");
       return { success: true };
     } catch (error) {
-      console.error("[Version Delete Server] ❌ ========== DELETE MUTATION ERROR ==========");
-      console.error("[Version Delete Server] Error type:", error instanceof Error ? error.constructor.name : typeof error);
-      console.error("[Version Delete Server] Error message:", error instanceof Error ? error.message : String(error));
-      console.error("[Version Delete Server] Error stack:", error instanceof Error ? error.stack : "No stack");
-      console.error("[Version Delete Server] Full error:", error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("[Version Delete] Error:", error instanceof Error ? error.message : error);
+      }
       throw error;
     }
   }),
