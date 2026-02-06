@@ -110,7 +110,8 @@ function SignInContent() {
         redirect: true,
       });
     } catch (err) {
-      setError("An error occurred. Please try again.");
+      console.error("Google Sign-in error:", err);
+      setError(err instanceof Error ? err.message : "An error occurred starting Google sign-in.");
       setIsGoogleLoading(false);
     }
   };
