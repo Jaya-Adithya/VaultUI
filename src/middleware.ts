@@ -24,10 +24,16 @@ export async function middleware(request: NextRequest) {
 
     // Paths that require Cross-Origin Isolation (for SharedArrayBuffer/WebContainer)
     // This includes /component/ routes and /tools/ routes
+    // Best practice: Set headers consistently and ensure they're not overridden
     if (pathname.startsWith('/component/') || pathname.startsWith('/tools/')) {
         // Set headers with proper casing (browsers are case-insensitive but it's good practice)
+        // These headers MUST be set for WebContainer to work
         response.headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
         response.headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+        
+        // Additional security headers (best practice)
+        // Prevent MIME type sniffing which could bypass COEP
+        response.headers.set('X-Content-Type-Options', 'nosniff');
     }
 
     // Paths that MUST NOT be isolated (Previews)

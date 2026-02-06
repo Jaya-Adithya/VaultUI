@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { WebContainer, type WebContainerProcess } from "@webcontainer/api";
+import { isCrossOriginIsolated } from "./use-cross-origin-isolation";
 
 interface TerminalOutput {
   type: "stdout" | "stderr" | "info" | "command";
@@ -36,6 +37,17 @@ export function useWebContainer(options: UseWebContainerOptions = {}) {
 
   // Boot WebContainer (singleton pattern - only one instance allowed)
   const boot = useCallback(async () => {
+    // Pre-flight check: Verify cross-origin isolation is available
+    if (!isCrossOriginIsolated()) {
+      const errorMessage =
+        "WebContainer requires cross-origin isolation. " +
+        "Please ensure COOP/COEP headers are configured. " +
+        "Check middleware configuration and restart the server if needed.";
+      setError(errorMessage);
+      addOutput("stderr", `Error: ${errorMessage}`);
+      throw new Error(errorMessage);
+    }
+
     if (containerRef.current) {
       setIsReady(true);
       return containerRef.current;
@@ -91,10 +103,15 @@ export function useWebContainer(options: UseWebContainerOptions = {}) {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to boot WebContainer";
 
-      // Handle cryptic "Unable to create more instances" error which means WebContainer
-      // is already running or browser limit reached (usually need reload in dev)
+      // Handle specific error cases with user-friendly messages
       if (message.includes("Unable to create more instances")) {
         const friendlyError = "WebContainer limit reached. Please reload the page.";
+        setError(friendlyError);
+        addOutput("stderr", `Error: ${friendlyError} (Original: ${message})`);
+      } else if (message.includes("SharedArrayBuffer") || message.includes("cross-origin")) {
+        const friendlyError =
+          "WebContainer requires cross-origin isolation. " +
+          "Please check that COOP/COEP headers are properly configured.";
         setError(friendlyError);
         addOutput("stderr", `Error: ${friendlyError} (Original: ${message})`);
       } else {

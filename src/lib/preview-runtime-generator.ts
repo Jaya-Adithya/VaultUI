@@ -360,10 +360,13 @@ export function generatePreviewRuntime(
           
           let transformed;
           try {
-            
+            // Ensure TypeScript types are properly stripped by Babel
             transformed = Babel.transform(__VAULT_SOURCE__, {
               presets: [
-                ["typescript", { isTSX: true, allExtensions: true }],
+                ["typescript", { 
+                  isTSX: true, 
+                  allExtensions: true
+                }],
                 ["react", { runtime: "classic" }],
               ],
               filename: "VaultPreview.tsx",
@@ -658,6 +661,79 @@ function generatePreviewWrapperSource(
   previewCode = previewCode.replace(/export\s*\{[^}]*\}\s*;?\n?/g, "");
   // Remove TS-only exports like: export type X = ...;
   previewCode = previewCode.replace(/export\s+type\s+[^;]+;?\n?/g, "");
+  
+  // Remove standalone type definitions (type X = ...)
+  // This function properly handles multi-line type definitions with balanced braces
+  const removeTypeDefinitions = (code: string): string => {
+    const lines = code.split('\n');
+    const result: string[] = [];
+    let i = 0;
+    
+    while (i < lines.length) {
+      const line = lines[i];
+      const typeMatch = line.match(/^\s*(export\s+)?type\s+(\w+)\s*=/);
+      
+      if (typeMatch) {
+        // Found a type definition, need to find where it ends
+        let braceCount = 0;
+        let bracketCount = 0;
+        let parenCount = 0;
+        let inString = false;
+        let stringChar = '';
+        let j = i;
+        let foundSemicolon = false;
+        
+        // Count braces/brackets/parens to find the end
+        while (j < lines.length && !foundSemicolon) {
+          const currentLine = lines[j];
+          for (let k = 0; k < currentLine.length; k++) {
+            const char = currentLine[k];
+            const prevChar = k > 0 ? currentLine[k - 1] : '';
+            
+            // Handle string literals
+            if ((char === '"' || char === "'" || char === '`') && prevChar !== '\\') {
+              if (!inString) {
+                inString = true;
+                stringChar = char;
+              } else if (char === stringChar) {
+                inString = false;
+                stringChar = '';
+              }
+              continue;
+            }
+            
+            if (inString) continue;
+            
+            // Count braces, brackets, parens
+            if (char === '{') braceCount++;
+            else if (char === '}') braceCount--;
+            else if (char === '[') bracketCount++;
+            else if (char === ']') bracketCount--;
+            else if (char === '(') parenCount++;
+            else if (char === ')') parenCount--;
+            else if (char === ';' && braceCount === 0 && bracketCount === 0 && parenCount === 0) {
+              foundSemicolon = true;
+              break;
+            }
+          }
+          
+          if (foundSemicolon) break;
+          j++;
+        }
+        
+        // Skip all lines from i to j (inclusive)
+        i = j + 1;
+        continue;
+      }
+      
+      result.push(line);
+      i++;
+    }
+    
+    return result.join('\n');
+  };
+  
+  previewCode = removeTypeDefinitions(previewCode);
 
   // Replace export default with const for preview
   previewCode = previewCode.replace(/export\s+default\s+/g, 'const ExportedComponent = ');

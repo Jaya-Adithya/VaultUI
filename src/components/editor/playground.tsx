@@ -43,6 +43,7 @@ import {
 import { CodeEditor } from "./code-editor";
 import { LivePreview } from "@/components/preview/live-preview";
 import { VersionHistory } from "./version-history";
+import { ComponentDocumentation } from "./component-documentation";
 import {
   detectFramework,
   detectLanguage,
@@ -57,6 +58,7 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { useWebContainer } from "@/lib/use-webcontainer";
 import { addPackageTypeDefinitions } from "@/lib/monaco-types";
+import { useCrossOriginIsolation } from "@/lib/use-cross-origin-isolation";
 
 interface TerminalLine {
   type: "stdout" | "stderr" | "info" | "command";
@@ -103,49 +105,18 @@ export function Playground({ componentId }: PlaygroundProps) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [currentVersionId, setCurrentVersionId] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [isIsolationMissing, setIsIsolationMissing] = useState(false);
 
-  // Check for cross-origin isolation
-  // Note: In development mode with Turbopack, headers might not be applied immediately.
-  // We check with a small delay to allow headers to be set.
+  // Use industrial-grade cross-origin isolation checking
+  const isolationStatus = useCrossOriginIsolation();
+  const isIsolationMissing = !isolationStatus.isIsolated && !isolationStatus.isChecking;
+
+  // Log diagnostics when isolation is missing (for debugging)
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const checkIsolation = () => {
-      if (!window.crossOriginIsolated) {
-        setIsIsolationMissing(true);
-        // Use console.warn with helpful message
-        const isDev = process.env.NODE_ENV === "development" ||
-          window.location.hostname === "localhost" ||
-          window.location.hostname === "127.0.0.1";
-
-        const isHttps = window.location.protocol === "https:";
-
-        if (!isDev && !isHttps) {
-          console.error(
-            "[Cross-Origin Isolation] Missing cross-origin isolation. SharedArrayBuffer will ONLY work on localhost or via HTTPS.\n" +
-            "Please ensure you are using HTTPS for non-local connections."
-          );
-        } else {
-          console.warn(
-            "[Cross-Origin Isolation] Missing cross-origin isolation. SharedArrayBuffer will not work.\n" +
-            "Headers (COOP/COEP) are configured in middleware and next.config.ts.\n" +
-            "If this persists, try restarting the dev server or clearing browser cache."
-          );
-        }
-      } else {
-        setIsIsolationMissing(false);
-      }
-    };
-
-    // Check immediately
-    checkIsolation();
-
-    // Also check after a short delay to account for headers being set asynchronously
-    const timeoutId = setTimeout(checkIsolation, 100);
-
-    return () => clearTimeout(timeoutId);
-  }, []);
+    if (isIsolationMissing && isolationStatus.error) {
+      console.warn("[Cross-Origin Isolation]", isolationStatus.error);
+      console.info("[Cross-Origin Isolation Diagnostics]", isolationStatus.diagnostics);
+    }
+  }, [isIsolationMissing, isolationStatus]);
   const [isCopied, setIsCopied] = useState(false);
   const [isDepsCopied, setIsDepsCopied] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -200,6 +171,7 @@ export function Playground({ componentId }: PlaygroundProps) {
   }, [editorWidth]);
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [terminalTab, setTerminalTab] = useState<"terminal" | "console">("terminal");
+  const [isDocumentationOpen, setIsDocumentationOpen] = useState(false);
   const [terminalCommand, setTerminalCommand] = useState("");
   const [terminalOutput, setTerminalOutput] = useState<TerminalLine[]>([]);
   const [isRunningCommand, setIsRunningCommand] = useState(false);
@@ -1204,9 +1176,12 @@ export function Playground({ componentId }: PlaygroundProps) {
 
           {/* Isolation Warning */}
           {isIsolationMissing && (
-            <div className="flex items-center gap-2 text-amber-500 bg-amber-500/10 px-3 py-1 rounded text-xs border border-amber-500/20 shrink-0">
+            <div 
+              className="flex items-center gap-2 text-amber-500 bg-amber-500/10 px-3 py-1 rounded text-xs border border-amber-500/20 shrink-0 cursor-help"
+              title={isolationStatus.error || "WebContainer features require cross-origin isolation. Check console for details."}
+            >
               <AlertTriangle className="h-3 w-3" />
-              <span className="font-medium">Cross-Origin Isolation Missing</span>
+              <span className="font-medium">Isolation Missing</span>
             </div>
           )}
 
@@ -1692,6 +1667,42 @@ export function Playground({ componentId }: PlaygroundProps) {
                     )}
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Component Documentation Panel */}
+          <div className="border-t border-border bg-muted/50">
+            <div className="flex items-center justify-between border-b border-border">
+              <button
+                onClick={() => setIsDocumentationOpen(!isDocumentationOpen)}
+                className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <FileCode className="h-3.5 w-3.5" />
+                <span>Documentation</span>
+              </button>
+              <button
+                onClick={() => setIsDocumentationOpen(!isDocumentationOpen)}
+                className="px-3 py-2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {isDocumentationOpen ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </div>
+
+            {isDocumentationOpen && (
+              <div className="h-[400px]">
+                <ComponentDocumentation
+                  files={files.map((f) => ({
+                    filename: f.filename,
+                    language: f.language,
+                    code: f.code,
+                  }))}
+                  componentName={component?.title}
+                />
               </div>
             )}
           </div>

@@ -78,10 +78,15 @@ function generateMultiFileHtmlDocument(
   framework: Framework,
   viewportWidth?: number,
   viewportHeight?: number,
-  zoom?: number
+  zoom?: number,
+  isResponsive?: boolean
 ): string {
   // Generate viewport meta tag based on dimensions and zoom (like Chrome DevTools)
   const getViewportMeta = () => {
+    // For responsive mode, always use device-width to ensure content fits properly
+    if (isResponsive) {
+      return `<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">`;
+    }
     if (viewportWidth && viewportHeight) {
       // Chrome DevTools approach: set explicit viewport width and scale
       const scale = zoom || 1.0;
@@ -916,9 +921,9 @@ export function LivePreview({ files, framework, className, onRun }: LivePreviewP
     () => {
       const width = typeof dimensions.width === "number" ? dimensions.width : undefined;
       const height = typeof dimensions.height === "number" ? dimensions.height : undefined;
-      return generateMultiFileHtmlDocument(files, framework, width, height, zoom);
+      return generateMultiFileHtmlDocument(files, framework, width, height, zoom, selectedDevice === "Responsive");
     },
-    [files, framework, dimensions.width, dimensions.height, zoom]
+    [files, framework, dimensions.width, dimensions.height, zoom, selectedDevice]
   );
 
   const postHtmlToFrame = useCallback(
@@ -1311,7 +1316,9 @@ export function LivePreview({ files, framework, className, onRun }: LivePreviewP
               width: typeof dimensions.width === "number" ? `${dimensions.width}px` : "100%",
               height: typeof dimensions.height === "number" ? `${dimensions.height}px` : "100%",
               display: "block",
+              overflow: "hidden",
             }}
+            scrolling="no"
             title="Live preview"
           />
 
