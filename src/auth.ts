@@ -19,6 +19,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: {
     strategy: "jwt", // Use JWT for middleware compatibility
   },
+  cookies: {
+    sessionToken: {
+      options: {
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+  },
   pages: {
     signIn: "/auth/signin",
     error: "/auth/error",
@@ -72,11 +80,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     async signIn({ user }) {
-      if (user.email?.endsWith("@position2.com")) {
+      if (!user?.email) {
+        if (process.env.NODE_ENV === "development" || process.env.AUTH_DEBUG) {
+          console.warn("[Auth] Sign-in denied: no email in profile (Google may not have granted email scope)");
+        }
+        return false;
+      }
+      if (user.email.endsWith("@position2.com")) {
         return true;
       }
-      if (process.env.NODE_ENV === "development") {
-        console.warn("[Auth] Sign-in denied: email domain must be @position2.com");
+      if (process.env.NODE_ENV === "development" || process.env.AUTH_DEBUG) {
+        console.warn("[Auth] Sign-in denied: email domain must be @position2.com", user.email);
       }
       return false;
     },
@@ -100,7 +114,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
   },
-  debug: process.env.NODE_ENV === "development",
+  debug: process.env.NODE_ENV === "development" || process.env.AUTH_DEBUG === "1",
 });
 
 
