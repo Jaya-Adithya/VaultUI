@@ -9,15 +9,8 @@ if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
   throw new Error("Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET environment variables");
 }
 
-if (!process.env.AUTH_SECRET) {
-  console.warn("⚠️  AUTH_SECRET is not set. This is required for NextAuth to work properly.");
-  console.warn("   Please set AUTH_SECRET in your .env.local file.");
-  console.warn("   You can generate one by running: openssl rand -base64 32");
-}
-
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
-  secret: process.env.AUTH_SECRET,
   session: {
     strategy: "jwt", // Use JWT for middleware compatibility
   },

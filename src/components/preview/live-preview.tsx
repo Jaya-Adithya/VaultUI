@@ -106,7 +106,6 @@ function generateMultiFileHtmlDocument(
       width: 100%;
       height: 100%;
       overflow: hidden;
-      position: fixed;
     }
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -118,15 +117,7 @@ function generateMultiFileHtmlDocument(
       height: 100%;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
-      position: relative;
-      max-width: 100%;
-      max-height: 100%;
-    }
-    #root > * {
-      max-width: 100%;
-      max-height: 100%;
-      overflow: hidden;
+      overflow: auto;
     }
     .error-display {
       color: #ef4444;
