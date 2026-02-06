@@ -360,10 +360,13 @@ export function generatePreviewRuntime(
           
           let transformed;
           try {
-            
+            // Ensure TypeScript types are properly stripped by Babel
             transformed = Babel.transform(__VAULT_SOURCE__, {
               presets: [
-                ["typescript", { isTSX: true, allExtensions: true }],
+                ["typescript", { 
+                  isTSX: true, 
+                  allExtensions: true
+                }],
                 ["react", { runtime: "classic" }],
               ],
               filename: "VaultPreview.tsx",
@@ -463,10 +466,11 @@ export function generatePreviewRuntime(
       } catch (e) {
         const rootElement = document.getElementById("root");
         if (rootElement) {
+          const message = (e && (e.stack || e.message)) ? (e.stack || e.message) : String(e);
           rootElement.innerHTML = \`
             <div style="color:#ef4444;padding:16px;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;font-size:12px;white-space:pre-wrap;background:#1a1a1a;border:1px solid #ef4444;border-radius:8px;">
               <div style="font-weight:600;margin-bottom:8px;color:#fca5a5;">❌ Error</div>
-              <div style="color:#fca5a5;">\${message}\${extra}\${helpfulTips}</div>
+              <div style="color:#fca5a5;">\${message}</div>
               <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(239,68,68,0.3);opacity:0.8;">
                 Note: Universal preview attempts to load packages automatically. If a package fails to load, it might not have a browser-compatible ESM build available on esm.sh.
               </div>
@@ -513,7 +517,7 @@ function generateDependencyLoader(imports: string[], allowAutoDetect: boolean = 
       const subpath = imp.substring(basePackage.length + 1);
 
       // For gsap subpath imports, load them from esm.sh
-      if (basePackage === 'gsap') {
+      if (basePackage === 'gsap' || basePackage === 'motion') {
         const importName = imp.replace(/[^a-zA-Z0-9]/g, "_");
         // Load the subpath import from esm.sh
         // Note: gsap/ScrollTrigger exports ScrollTrigger as a named export, not default
@@ -525,7 +529,7 @@ function generateDependencyLoader(imports: string[], allowAutoDetect: boolean = 
         loaders.push(`window.${importName} = ${importName}Module;`);
         autoDetected.push(imp);
         // #region agent log
-        fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'preview-runtime-generator.ts:generateDependencyLoader', message: 'Loading gsap subpath import', data: { imp, basePackage, subpath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'B' }) }).catch(() => { });
+        fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'preview-runtime-generator.ts:generateDependencyLoader', message: 'Loading subpath import', data: { imp, basePackage, subpath }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'B' }) }).catch(() => { });
         // #endregion
         return;
       }
@@ -627,8 +631,8 @@ function generatePreviewWrapperSource(
     // Handle subpath imports (e.g., "gsap/ScrollTrigger")
     if (mod.includes('/') && !mod.startsWith('@') && !mod.startsWith('./') && !mod.startsWith('../')) {
       const basePackage = mod.split('/')[0];
-      if (basePackage === 'gsap') {
-        // GSAP subpath imports are loaded separately
+      if (basePackage === 'gsap' || basePackage === 'motion') {
+        // GSAP and Motion subpath imports are loaded separately
         moduleToDepVar[mod] = mod.replace(/[^a-zA-Z0-9]/g, "_");
       }
       // Other subpath imports (like next/image) are handled separately
@@ -657,6 +661,79 @@ function generatePreviewWrapperSource(
   previewCode = previewCode.replace(/export\s*\{[^}]*\}\s*;?\n?/g, "");
   // Remove TS-only exports like: export type X = ...;
   previewCode = previewCode.replace(/export\s+type\s+[^;]+;?\n?/g, "");
+  
+  // Remove standalone type definitions (type X = ...)
+  // This function properly handles multi-line type definitions with balanced braces
+  const removeTypeDefinitions = (code: string): string => {
+    const lines = code.split('\n');
+    const result: string[] = [];
+    let i = 0;
+    
+    while (i < lines.length) {
+      const line = lines[i];
+      const typeMatch = line.match(/^\s*(export\s+)?type\s+(\w+)\s*=/);
+      
+      if (typeMatch) {
+        // Found a type definition, need to find where it ends
+        let braceCount = 0;
+        let bracketCount = 0;
+        let parenCount = 0;
+        let inString = false;
+        let stringChar = '';
+        let j = i;
+        let foundSemicolon = false;
+        
+        // Count braces/brackets/parens to find the end
+        while (j < lines.length && !foundSemicolon) {
+          const currentLine = lines[j];
+          for (let k = 0; k < currentLine.length; k++) {
+            const char = currentLine[k];
+            const prevChar = k > 0 ? currentLine[k - 1] : '';
+            
+            // Handle string literals
+            if ((char === '"' || char === "'" || char === '`') && prevChar !== '\\') {
+              if (!inString) {
+                inString = true;
+                stringChar = char;
+              } else if (char === stringChar) {
+                inString = false;
+                stringChar = '';
+              }
+              continue;
+            }
+            
+            if (inString) continue;
+            
+            // Count braces, brackets, parens
+            if (char === '{') braceCount++;
+            else if (char === '}') braceCount--;
+            else if (char === '[') bracketCount++;
+            else if (char === ']') bracketCount--;
+            else if (char === '(') parenCount++;
+            else if (char === ')') parenCount--;
+            else if (char === ';' && braceCount === 0 && bracketCount === 0 && parenCount === 0) {
+              foundSemicolon = true;
+              break;
+            }
+          }
+          
+          if (foundSemicolon) break;
+          j++;
+        }
+        
+        // Skip all lines from i to j (inclusive)
+        i = j + 1;
+        continue;
+      }
+      
+      result.push(line);
+      i++;
+    }
+    
+    return result.join('\n');
+  };
+  
+  previewCode = removeTypeDefinitions(previewCode);
 
   // Replace export default with const for preview
   previewCode = previewCode.replace(/export\s+default\s+/g, 'const ExportedComponent = ');
@@ -809,8 +886,8 @@ function generatePreviewWrapperSource(
       continue;
     }
 
-    // Handle GSAP subpath imports (e.g., "gsap/ScrollTrigger")
-    if (mod.startsWith("gsap/")) {
+    // Handle GSAP and Motion subpath imports
+    if (mod.startsWith("gsap/") || mod.startsWith("motion/")) {
       const depVar = mod.replace(/[^a-zA-Z0-9]/g, "_");
       // #region agent log
       fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'preview-runtime-generator.ts:generatePreviewWrapperSource', message: 'Processing gsap subpath import', data: { mod, depVar, hasModuleToDepVar: !!moduleToDepVar[mod], impKind: imp.kind, hasNamed: !!imp.named, namedCount: imp.named?.length, named: imp.named }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'post-fix', hypothesisId: 'B' }) }).catch(() => { });

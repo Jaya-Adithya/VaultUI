@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import { TopBar } from "@/components/layout/top-bar";
 import { Sidebar } from "@/components/layout/sidebar";
 import { ComponentGrid } from "@/components/grid/component-grid";
@@ -22,23 +22,6 @@ export default function HomePage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const debouncedSearch = useDebounce(searchQuery, 300);
-  
-  // Load collections to find "Animations" as default
-  const { data: collections } = trpc.collection.list.useQuery();
-  const hasSetDefault = useRef(false);
-  
-  // Set "Animations" as default collection on initial load (only once)
-  useEffect(() => {
-    if (collections && !hasSetDefault.current && selectedCollection === null) {
-      const animationsCollection = collections.find(
-        (c) => c.name.toLowerCase() === "animations"
-      );
-      if (animationsCollection) {
-        setSelectedCollection(animationsCollection.id);
-        hasSetDefault.current = true;
-      }
-    }
-  }, [collections, selectedCollection]);
 
   const { data: components, isLoading } = trpc.component.list.useQuery({
     search: debouncedSearch || undefined,
@@ -95,6 +78,7 @@ export default function HomePage() {
             components={components ?? []}
             viewMode={viewMode}
             isLoading={isLoading}
+            selectedCollection={selectedCollection}
           />
         </main>
       </div>

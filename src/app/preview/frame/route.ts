@@ -15,8 +15,8 @@ export async function GET(request: Request) {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtmlAttr(title)}</title>
     <style>
-      html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #0a0a0a; }
-      #inner { width: 100%; height: 100%; border: 0; display: block; }
+      html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #0a0a0a; overflow: hidden; position: fixed; }
+      #inner { width: 100%; height: 100%; border: 0; display: block; overflow: hidden; }
       .hint { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.6); font: 12px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     </style>
   </head>

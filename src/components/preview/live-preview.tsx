@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { WaterProgress } from "@/components/ui/water-progress";
 import type { Framework } from "@/lib/detect-framework";
 import { generatePreviewRuntime } from "@/lib/preview-runtime-generator";
 
@@ -77,10 +78,15 @@ function generateMultiFileHtmlDocument(
   framework: Framework,
   viewportWidth?: number,
   viewportHeight?: number,
-  zoom?: number
+  zoom?: number,
+  isResponsive?: boolean
 ): string {
   // Generate viewport meta tag based on dimensions and zoom (like Chrome DevTools)
   const getViewportMeta = () => {
+    // For responsive mode, always use device-width to ensure content fits properly
+    if (isResponsive) {
+      return `<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">`;
+    }
     if (viewportWidth && viewportHeight) {
       // Chrome DevTools approach: set explicit viewport width and scale
       const scale = zoom || 1.0;
@@ -88,7 +94,7 @@ function generateMultiFileHtmlDocument(
     }
     return `<meta name="viewport" content="width=device-width, initial-scale=1.0">`;
   };
-  
+
   const viewportMeta = getViewportMeta();
   const baseStyles = `
     * {
@@ -98,19 +104,29 @@ function generateMultiFileHtmlDocument(
       margin: 0;
       padding: 0;
       width: 100%;
-      min-height: 100%;
+      height: 100%;
+      overflow: hidden;
+      position: fixed;
     }
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #0a0a0a;
       color: #fafafa;
-      overflow: auto;
     }
     #root {
       width: 100%;
-      min-height: 100%;
+      height: 100%;
       display: flex;
       flex-direction: column;
+      overflow: hidden;
+      position: relative;
+      max-width: 100%;
+      max-height: 100%;
+    }
+    #root > * {
+      max-width: 100%;
+      max-height: 100%;
+      overflow: hidden;
     }
     .error-display {
       color: #ef4444;
@@ -664,8 +680,8 @@ function generateMultiFileHtmlDocument(
               margin: 0;
               padding: 0;
               width: 100%;
-              min-height: 100%;
-              overflow: auto;
+              height: 100%;
+              overflow: hidden;
             }
             body {
               display: flex;
@@ -676,9 +692,9 @@ function generateMultiFileHtmlDocument(
               display: flex;
               flex-direction: column;
               width: 100%;
-              min-height: 100%;
+              height: 100%;
               max-width: 100%;
-              overflow: visible;
+              overflow: auto;
               box-sizing: border-box;
             }
             #root > * {
@@ -852,7 +868,7 @@ export function LivePreview({ files, framework, className, onRun }: LivePreviewP
         const rect = container.getBoundingClientRect();
         // Account for padding (p-4 = 16px on each side = 32px total)
         const padding = 32;
-        setContainerDimensions({ 
+        setContainerDimensions({
           width: Math.max(200, Math.floor(rect.width - padding)),
           height: Math.max(200, Math.floor(rect.height - padding))
         });
@@ -885,18 +901,18 @@ export function LivePreview({ files, framework, className, onRun }: LivePreviewP
       // If custom values are percentages or empty, use container dimensions
       let w = parseInt(customWidth);
       let h = parseInt(customHeight);
-      
+
       if (isNaN(w) || customWidth === "100%" || customWidth === "") {
         w = containerDimensions.width || 1280;
       }
       if (isNaN(h) || customHeight === "100%" || customHeight === "") {
         h = containerDimensions.height || 800;
       }
-      
+
       // Ensure minimum dimensions
       w = Math.max(200, w);
       h = Math.max(200, h);
-      
+
       return { width: w, height: h };
     }
 
@@ -914,9 +930,9 @@ export function LivePreview({ files, framework, className, onRun }: LivePreviewP
     () => {
       const width = typeof dimensions.width === "number" ? dimensions.width : undefined;
       const height = typeof dimensions.height === "number" ? dimensions.height : undefined;
-      return generateMultiFileHtmlDocument(files, framework, width, height, zoom);
+      return generateMultiFileHtmlDocument(files, framework, width, height, zoom, selectedDevice === "Responsive");
     },
-    [files, framework, dimensions.width, dimensions.height, zoom]
+    [files, framework, dimensions.width, dimensions.height, zoom, selectedDevice]
   );
 
   const postHtmlToFrame = useCallback(
@@ -1186,7 +1202,7 @@ export function LivePreview({ files, framework, className, onRun }: LivePreviewP
       >
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10 transition-opacity">
-            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <WaterProgress size={24} strokeWidth={2} duration={2000} />
           </div>
         )}
 
@@ -1309,7 +1325,9 @@ export function LivePreview({ files, framework, className, onRun }: LivePreviewP
               width: typeof dimensions.width === "number" ? `${dimensions.width}px` : "100%",
               height: typeof dimensions.height === "number" ? `${dimensions.height}px` : "100%",
               display: "block",
+              overflow: "hidden",
             }}
+            scrolling="no"
             title="Live preview"
           />
 

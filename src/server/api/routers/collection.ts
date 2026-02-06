@@ -27,15 +27,31 @@ export const collectionRouter = createTRPCRouter({
 
   list: publicProcedure.query(async ({ ctx }) => {
     const collections = await ctx.db.collection.findMany({
-      include: {
-        _count: {
-          select: { components: true },
-        },
-      },
       orderBy: { name: "asc" },
     });
 
-    return collections;
+    // Calculate count of non-deleted components for each collection
+    const collectionsWithCount = await Promise.all(
+      collections.map(async (collection) => {
+        const nonDeletedCount = await ctx.db.componentCollection.count({
+          where: {
+            collectionId: collection.id,
+            component: {
+              deletedAt: null,
+            },
+          },
+        });
+
+        return {
+          ...collection,
+          _count: {
+            components: nonDeletedCount,
+          },
+        };
+      })
+    );
+
+    return collectionsWithCount;
   }),
 
   getBySlug: publicProcedure.input(z.string()).query(async ({ ctx, input }) => {
@@ -102,6 +118,46 @@ export const collectionRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Check if component exists and is not deleted
+      const component = await ctx.db.component.findUnique({
+        where: { id: input.componentId },
+        select: { id: true, deletedAt: true },
+      });
+
+      if (!component) {
+        throw new Error("Component not found");
+      }
+
+      if (component.deletedAt !== null) {
+        throw new Error("Cannot add deleted component to collection");
+      }
+
+      // Check if collection exists
+      const collection = await ctx.db.collection.findUnique({
+        where: { id: input.collectionId },
+        select: { id: true },
+      });
+
+      if (!collection) {
+        throw new Error("Collection not found");
+      }
+
+      // Check if the component is already in the collection
+      const existingLink = await ctx.db.componentCollection.findUnique({
+        where: {
+          componentId_collectionId: {
+            componentId: input.componentId,
+            collectionId: input.collectionId,
+          },
+        },
+      });
+
+      if (existingLink) {
+        // Already in collection, return the existing link
+        return existingLink;
+      }
+
+      // Create the link
       const link = await ctx.db.componentCollection.create({
         data: {
           collectionId: input.collectionId,
