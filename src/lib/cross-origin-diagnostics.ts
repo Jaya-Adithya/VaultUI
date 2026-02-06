@@ -60,7 +60,7 @@ export function getRecommendations(diagnostics: IsolationDiagnostics["client"]):
       recommendations.push("SharedArrayBuffer is not available - this indicates missing COOP/COEP headers");
     }
 
-    recommendations.push("Verify middleware.ts is setting COOP/COEP headers correctly");
+    recommendations.push("Verify proxy.ts is setting COOP/COEP headers correctly");
     recommendations.push("Check browser DevTools → Network → Response Headers for 'Cross-Origin-Embedder-Policy' and 'Cross-Origin-Opener-Policy'");
     recommendations.push("Try restarting the dev server if in development");
     recommendations.push("Clear browser cache and hard refresh (Ctrl+Shift+R / Cmd+Shift+R)");

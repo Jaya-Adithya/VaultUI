@@ -50,7 +50,7 @@ const nextConfig: NextConfig = {
     return config;
   },
 
-  // Cross-origin isolation headers are now handled via the new proxy/middleware
+  // Cross-origin isolation headers are now handled via the proxy convention
   // conventions in Next.js 16. Keep this empty unless you have very specific
   // per-route header needs that cannot be expressed via proxy.
 };

@@ -230,10 +230,6 @@ export function extractImports(code: string): string[] {
     imports.add(match[1]);
   }
 
-  // #region agent log
-  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:extractImports', message: 'Extracted imports', data: { imports: Array.from(imports), count: imports.size }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' }) }).catch(() => { });
-  // #endregion
-
   return Array.from(imports);
 }
 
@@ -241,24 +237,15 @@ export function extractImports(code: string): string[] {
  * Validate if a package name is safe for browser auto-loading
  */
 export function isBrowserSafePackage(packageName: string): boolean {
-  // #region agent log
-  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:isBrowserSafePackage', message: 'Checking browser safety', data: { packageName }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-  // #endregion
 
   // Block server-only packages
   if (SERVER_ONLY_BLOCKLIST.has(packageName)) {
-    // #region agent log
-    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:isBrowserSafePackage', message: 'Package in SERVER_ONLY_BLOCKLIST', data: { packageName }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-    // #endregion
     return false;
   }
 
   // Block dangerous patterns
   for (const pattern of DANGEROUS_PATTERNS) {
     if (pattern.test(packageName)) {
-      // #region agent log
-      fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:isBrowserSafePackage', message: 'Package matches dangerous pattern', data: { packageName, pattern: pattern.toString() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-      // #endregion
       return false;
     }
   }
@@ -268,15 +255,9 @@ export function isBrowserSafePackage(packageName: string): boolean {
   // Allowed: lowercase, numbers, hyphens, underscores, dots, @scope/
   const npmPackageRegex = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
   if (!npmPackageRegex.test(packageName)) {
-    // #region agent log
-    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:isBrowserSafePackage', message: 'Package name invalid format', data: { packageName }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
-    // #endregion
     return false;
   }
 
-  // #region agent log
-  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:isBrowserSafePackage', message: 'Package is browser safe', data: { packageName }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-  // #endregion
   return true;
 }
 
@@ -303,20 +284,12 @@ export function isValidNpmPackage(name: string): boolean {
     const npmPackageRegex = /^[a-z0-9-~][a-z0-9-._~]*$/;
     const isValidBase = npmPackageRegex.test(basePackage);
 
-    // #region agent log
-    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:isValidNpmPackage', message: 'Subpath import detected', data: { name, basePackage, isValidBase }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
-    // #endregion
-
     return isValidBase;
   }
 
   // Basic npm package name validation
   const npmPackageRegex = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
   const isValid = npmPackageRegex.test(name);
-
-  // #region agent log
-  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:isValidNpmPackage', message: 'Package validation result', data: { name, isValid }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
-  // #endregion
 
   return isValid;
 }
@@ -337,9 +310,6 @@ export function generateAutoCdnUrl(packageName: string): string {
 export type PreviewMode = "live" | "shimmed" | "auto" | "disabled";
 
 export function decidePreviewMode(imports: string[]): PreviewMode {
-  // #region agent log
-  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:decidePreviewMode', message: 'decidePreviewMode called', data: { imports, importsCount: imports.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
-  // #endregion
 
   const unknownDeps: string[] = [];
   const unsafeDeps: string[] = [];
@@ -366,16 +336,10 @@ export function decidePreviewMode(imports: string[]): PreviewMode {
       // Check if base package is in blocklist (e.g., "next/server" -> block "next")
       if (SERVER_ONLY_BLOCKLIST.has(basePackage)) {
         unsafeDeps.push(imp);
-        // #region agent log
-        fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:decidePreviewMode', message: 'Subpath import from blocked base package', data: { imp, basePackage }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-        // #endregion
         return true;
       }
       // Allow subpath imports from non-blocked packages (e.g., "gsap/ScrollTrigger", "next/image")
       skippedDeps.push(`${imp} (subpath)`);
-      // #region agent log
-      fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:decidePreviewMode', message: 'Subpath import allowed', data: { imp, basePackage }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
-      // #endregion
       return false;
     }
 
@@ -385,16 +349,9 @@ export function decidePreviewMode(imports: string[]): PreviewMode {
       return false;
     }
 
-    // #region agent log
-    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:decidePreviewMode', message: 'Checking package', data: { imp, isValidNpm: isValidNpmPackage(imp), isBrowserSafe: isBrowserSafePackage(imp) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-    // #endregion
-
     // Check if it's explicitly unsafe (server-only etc) - ONLY block these
     if (!isBrowserSafePackage(imp)) {
       unsafeDeps.push(imp);
-      // #region agent log
-      fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:decidePreviewMode', message: 'Package marked unsafe', data: { imp, reason: 'isBrowserSafePackage returned false' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-      // #endregion
       return true;
     }
 
@@ -406,29 +363,16 @@ export function decidePreviewMode(imports: string[]): PreviewMode {
 
     // If it's not a valid npm package and not explicitly blocked, still allow it
     // (might be a subpath import or something we can handle)
-    // #region agent log
-    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:decidePreviewMode', message: 'Package not valid npm but allowing', data: { imp }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
-    // #endregion
     return false;
   });
 
-  // #region agent log
-  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:decidePreviewMode', message: 'Preview mode decision', data: { hasUnsafeDeps, unsafeDeps, unknownDeps, skippedDeps }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
-  // #endregion
-
   // Only disable if we have explicitly unsafe dependencies (server-only packages)
   if (hasUnsafeDeps) {
-    // #region agent log
-    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:decidePreviewMode', message: 'Preview disabled', data: { unsafeDeps }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-    // #endregion
     return "disabled";
   }
 
   // If we have unknown but safe npm packages, use auto mode
   if (unknownDeps.length > 0) {
-    // #region agent log
-    fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:decidePreviewMode', message: 'Preview mode: auto', data: { unknownDeps }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
-    // #endregion
     return "auto";
   }
 
@@ -438,9 +382,6 @@ export function decidePreviewMode(imports: string[]): PreviewMode {
   );
 
   const mode = hasShims ? "shimmed" : "live";
-  // #region agent log
-  fetch('http://127.0.0.1:7245/ingest/c699f605-fa04-4a22-8b01-2579eb2ca0d4', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'dependency-registry.ts:decidePreviewMode', message: 'Preview mode: live/shimmed', data: { mode, hasShims }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
-  // #endregion
   return mode;
 }
 

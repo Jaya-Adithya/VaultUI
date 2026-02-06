@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { signIn, getSession } from "next-auth/react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
@@ -11,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 
-export default function SignInPage() {
+function SignInContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
@@ -328,5 +329,33 @@ export default function SignInPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function SignInFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center p-4 bg-gradient-to-br from-background via-background to-muted/20">
+      <Card className="w-full max-w-md shadow-2xl border-border/50 backdrop-blur-sm bg-card/95">
+        <CardHeader className="space-y-1 text-center">
+          <CardTitle className="text-2xl font-bold tracking-tight">
+            Sign In
+          </CardTitle>
+          <CardDescription className="text-base">
+            Sign in to access your component vault
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={<SignInFallback />}>
+      <SignInContent />
+    </Suspense>
   );
 }
