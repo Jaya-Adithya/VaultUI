@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx shadcn@latest add button card dialog input label select textarea tabs scroll-area separator dropdown-menu tooltip badge -y)",
+      "Bash(npx prisma:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm uninstall:*)"
+    ]
+  }
+}
